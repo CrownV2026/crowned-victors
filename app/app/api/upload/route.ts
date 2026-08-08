@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'images'
 
@@ -14,11 +15,10 @@ async function getUserFromRequest(req: NextRequest) {
   const token = headerToken || cookieToken
   if (!token) return null
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) return null
+  const config = getSupabasePublicConfig()
+  if (!config) return null
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   })
@@ -30,9 +30,8 @@ async function getUserFromRequest(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!supabaseUrl || !supabaseAnonKey) {
+    const config = getSupabasePublicConfig()
+    if (!config) {
       return NextResponse.json({ error: 'Missing Supabase URL or anon key' }, { status: 500 })
     }
 
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
     const safeName = sanitizeFileName(file.name || 'upload.bin')
     const path = `${user.id}/${Date.now()}-${safeName}`
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { Authorization: `Bearer ${token}` } },
     })

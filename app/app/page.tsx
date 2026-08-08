@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import BooksSection from '../components/BooksSection'
 import { BookItem, normalizeBook } from '../lib/bookPurchase'
+import { getSupabasePublicConfig } from '../lib/supabaseConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +25,10 @@ function isMissingTableError(error: any) {
 }
 
 async function getContentBySlug(slug: string): Promise<ContentRow | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) return null
+  const config = getSupabasePublicConfig()
+  if (!config) return null
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
@@ -49,11 +49,10 @@ async function getContentBySlug(slug: string): Promise<ContentRow | null> {
 }
 
 async function getPublishedBooks(): Promise<BookItem[] | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) return null
+  const config = getSupabasePublicConfig()
+  if (!config) return null
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
