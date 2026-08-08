@@ -8,17 +8,28 @@ export default function Auth({ onAuth }: { onAuth?: (session: any) => void }) {
   const [session, setSession] = useState<any>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      onAuth?.(session)
-    })
-    return () => subscription.unsubscribe()
-  }, [onAuth])
+  supabase.auth.getSession().then(({ data }) => {
+    setSession(data.session)
+  })
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session)
+    onAuth?.(session)
+  })
+
+  return () => subscription.unsubscribe()
+}, [onAuth])
 
   const signIn = async () => {
     setLoading(true)
-    await supabase.auth.signInWithOtp({ email })
+   await supabase.auth.signInWithOtp({
+  email,
+  options: {
+    emailRedirectTo: `${window.location.origin}/admin`,
+  },
+}) 
     setLoading(false)
     alert('Check your email for a sign-in link')
   }

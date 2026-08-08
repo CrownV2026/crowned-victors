@@ -80,5 +80,5 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 Notes:
 
-- The admin editor uses `react-quill` for rich text editing and uploads images to Supabase Storage via `app/components/ImageUpload.tsx`.
+- The admin editor uses a simple textarea-based body editor and uploads images to Supabase Storage via `app/components/ImageUpload.tsx`.
 - For stricter server-side protection of the `/admin` route, consider using Supabase Auth Helpers to persist HTTP-only cookies and verify sessions on the server.

@@ -17,7 +17,7 @@ export default function AdminPanel() {
       setIsAdmin(role === 'admin')
       setLoading(false)
     })
-    const { subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       const role = session?.user?.user_metadata?.role
       setIsAdmin(role === 'admin')
@@ -25,7 +25,7 @@ export default function AdminPanel() {
     })
     return () => {
       mounted = false
-      subscription.unsubscribe()
+      authListener.subscription.unsubscribe()
     }
   }, [])
 

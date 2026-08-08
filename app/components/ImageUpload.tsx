@@ -9,16 +9,38 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
     const file = e.target.files?.[0]
     if (!file) return
     setLoading(true)
-    const path = `${Date.now()}-${file.name}`
-    const { data, error } = await supabase.storage.from('Images').upload(path, file, { cacheControl: '3600', upsert: false })
-    if (error) {
-      alert(error.message)
+    try {
+      const session = await supabase.auth.getSession().then((r) => r.data.session)
+      if (!session) {
+        alert('Sign in first')
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        credentials: 'include',
+        body: formData,
+      })
+
+      const payload = await res.json().catch(async () => {
+        const text = await res.text().catch(() => '')
+        return { error: text || 'Upload failed' }
+      })
+      if (!res.ok) {
+        alert(payload.error || 'Upload failed')
+        return
+      }
+
+      onUploaded(payload.url)
+    } catch (err: any) {
+      alert(err?.message || 'Upload failed')
+    } finally {
       setLoading(false)
-      return
     }
-    const { data: urlData } = supabase.storage.from('Images').getPublicUrl(data.path)
-    onUploaded(urlData.publicUrl)
-    setLoading(false)
   }
 
   return (
