@@ -2,9 +2,5 @@
   "version": 2,
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "projectSettings": {
-    "rootDirectory": "app"
-  }
+  "buildCommand": "npm run build"
 }
