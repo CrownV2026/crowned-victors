@@ -1,7 +1,6 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "installCommand": "npm install --prefix ./app",
-  "buildCommand": "npm run build --prefix ./app",
+  "buildCommand": "cd app && npm install && npm run build",
   "outputDirectory": "app/.next"
 }
