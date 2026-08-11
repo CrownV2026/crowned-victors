@@ -13,20 +13,24 @@ export default function LoginPage() {
 
   async function signIn() {
     setLoading(true)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+      setLoading(false)
 
-    setLoading(false)
+      if (error) {
+        alert(error.message)
+        return
+      }
 
-    if (error) {
-      alert(error.message)
-      return
+      router.push('/admin/editor')
+    } catch (err: any) {
+      setLoading(false)
+      alert(err?.message || 'Sign in failed')
     }
-
-    router.push('/admin/editor')
   }
 
   return (

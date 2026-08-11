@@ -1,26 +1,30 @@
 "use client"
 import React, { useEffect, useState } from 'react'
 import supabase from '../lib/supabaseClient'
+import { getSupabasePublicConfig } from '../lib/supabaseConfig'
 
 export default function Auth({ onAuth }: { onAuth?: (session: any) => void }) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState<any>(null)
+  const configured = Boolean(getSupabasePublicConfig())
 
   useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setSession(data.session)
-  })
+    if (!configured) return
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session)
-    onAuth?.(session)
-  })
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+    })
 
-  return () => subscription.unsubscribe()
-}, [onAuth])
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      onAuth?.(session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [configured, onAuth])
 
   const signIn = async () => {
     setLoading(true)
@@ -37,6 +41,10 @@ export default function Auth({ onAuth }: { onAuth?: (session: any) => void }) {
   const signOut = async () => {
     await supabase.auth.signOut()
     setSession(null)
+  }
+
+  if (!configured) {
+    return <p>Authentication is not available — Supabase is not configured.</p>
   }
 
   if (session?.user) {

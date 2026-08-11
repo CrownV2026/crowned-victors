@@ -51,15 +51,16 @@ async function runWithTableFallback<T>(
     }
   }
 
-  return lastResult?.error
-    ? {
-        ...lastResult,
-        error: {
-          ...lastResult.error,
-          message: `None of these tables is available: ${CONTENT_TABLES.join(', ')}. Create one in Supabase.`,
-        },
-      }
-    : { data: undefined, error: { message: 'No content tables configured' } }
+  if (lastResult) {
+    return {
+      ...lastResult,
+      error: {
+        ...lastResult.error,
+        message: `None of these tables is available: ${CONTENT_TABLES.join(', ')}. Create one in Supabase.`,
+      },
+    }
+  }
+  return { data: undefined, error: { message: 'No content tables configured' } }
 }
 
 async function requireAuth(req: NextRequest, config: { supabaseUrl: string; supabaseAnonKey: string }) {

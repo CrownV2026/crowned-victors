@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import ImageUpload from './ImageUpload'
 import supabase from '../lib/supabaseClient'
+import { getSupabasePublicConfig } from '../lib/supabaseConfig'
 import { BookItem, normalizeBook } from '../lib/bookPurchase'
 
 const DEFAULTS = {
@@ -179,6 +180,7 @@ export default function EditorClient({ slug }: { slug: string }) {
   const [books, setBooks] = useState<BookEditorItem[]>([])
   const [galleryImages, setGalleryImages] = useState<string[]>([])
   const [deletedBookIds, setDeletedBookIds] = useState<string[]>([])
+  const configured = Boolean(getSupabasePublicConfig())
 
   const set = (key: keyof typeof DEFAULTS) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setF(prev => ({ ...prev, [key]: e.target.value }))
@@ -210,7 +212,7 @@ export default function EditorClient({ slug }: { slug: string }) {
   }, [slug])
 
   useEffect(() => {
-    if (slug !== 'books-and-resources') return
+    if (!configured || slug !== 'books-and-resources') return
 
     let cancelled = false
 
@@ -230,9 +232,10 @@ export default function EditorClient({ slug }: { slug: string }) {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [configured, slug])
 
   const save = async () => {
+    if (!configured) return alert('Supabase is not configured.')
     const session = await supabase.auth.getSession().then(r => r.data.session)
     if (!session) return alert('Sign in first')
     const token = session.access_token
