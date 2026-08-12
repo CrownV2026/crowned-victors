@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../lib/supabaseConfig'
 
@@ -8,11 +9,11 @@ type ContentRow = {
   slug: string
   title: string | null
   subtitle: string | null
-  metadata: Record<string, any> | null
+  metadata: Record<string, unknown> | null
 }
 
-function isMissingTableError(error: any) {
-  const msg = String(error?.message || '').toLowerCase()
+function isMissingTableError(error: unknown) {
+  const msg = String((error as { message?: string } | null)?.message || '').toLowerCase()
   return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
 }
 
@@ -63,10 +64,14 @@ function parseImageList(value: unknown): string[] {
   return []
 }
 
+function toText(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value : fallback
+}
+
 export default async function GalleryPage() {
   const gallery = await getGalleryContent()
-  const heading = gallery?.metadata?.galleryHeading || gallery?.title || 'Gallery'
-  const description = gallery?.metadata?.galleryDescription || gallery?.subtitle || 'Moments from worship, fellowship, outreach, and ministry gatherings.'
+  const heading = toText(gallery?.metadata?.galleryHeading, gallery?.title || 'Gallery')
+  const description = toText(gallery?.metadata?.galleryDescription, gallery?.subtitle || 'Moments from worship, fellowship, outreach, and ministry gatherings.')
   const images = parseImageList(gallery?.metadata?.galleryImages || gallery?.metadata?.galleryImagesJson)
 
   return (
@@ -74,7 +79,7 @@ export default async function GalleryPage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{heading}</h1>
-          <Link href="/app" className="rounded-full border border-[#D4AF37]/40 bg-white/85 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white">
+          <Link href="/" className="rounded-full border border-[#D4AF37]/40 bg-white/85 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white">
             Back to home
           </Link>
         </div>
@@ -85,7 +90,7 @@ export default async function GalleryPage() {
           <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {images.map((url, index) => (
               <figure key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/20 bg-white/85 shadow-sm">
-                <img src={url} alt={`Gallery image ${index + 1}`} className="h-64 w-full object-cover" />
+                <Image src={url} alt={`Gallery image ${index + 1}`} width={1200} height={768} unoptimized className="h-64 w-full object-cover" />
               </figure>
             ))}
           </section>

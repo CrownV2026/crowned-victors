@@ -1,6 +1,8 @@
 "use client"
 import React, { useEffect, useState } from 'react'
+import Image from 'next/image'
 import ImageUpload from './ImageUpload'
+import VideoUpload from './VideoUpload'
 import supabase from '../lib/supabaseClient'
 import { BookItem, normalizeBook } from '../lib/bookPurchase'
 
@@ -21,6 +23,9 @@ const DEFAULTS = {
   booksJson: '',
   booksSectionHeading: '',
   booksSectionDescription: '',
+  sermonsHeading: '',
+  sermonsDescription: '',
+  sermonsJson: '',
   contactEmail: '', contactPhone: '', contactLocation: '',
   giveOnlineHeading: '',
   giveOnlineIntroduction: '',
@@ -40,6 +45,15 @@ const DEFAULTS = {
 }
 
 type BookEditorItem = BookItem
+
+type SermonItem = {
+  title: string
+  speaker: string
+  date: string
+  description: string
+  videoUrl: string
+  thumbnailUrl: string
+}
 
 const emptyBook = (): BookEditorItem => ({
   title: '',
@@ -87,48 +101,83 @@ function normalizeImageArray(value: unknown): string[] {
   return value.filter((url): url is string => typeof url === 'string' && Boolean(url.trim())).map((url) => url.trim())
 }
 
-function metaToFlat(meta: any) {
+const emptySermon = (): SermonItem => ({
+  title: '',
+  speaker: '',
+  date: '',
+  description: '',
+  videoUrl: '',
+  thumbnailUrl: '',
+})
+
+function normalizeSermonsArray(value: unknown): SermonItem[] {
+  if (!Array.isArray(value)) return []
+
+  return value.map((item) => {
+    const record = item as Record<string, unknown>
+    return {
+      title: typeof record.title === 'string' ? record.title : '',
+      speaker: typeof record.speaker === 'string' ? record.speaker : '',
+      date: typeof record.date === 'string' ? record.date : '',
+      description: typeof record.description === 'string' ? record.description : '',
+      videoUrl: typeof record.videoUrl === 'string' ? record.videoUrl : '',
+      thumbnailUrl: typeof record.thumbnailUrl === 'string' ? record.thumbnailUrl : '',
+    }
+  })
+}
+
+function metaToFlat(meta: Record<string, unknown> | null | undefined): Partial<typeof DEFAULTS> {
   if (!meta) return {}
+
+  const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+  const asJoinedString = (value: unknown, separator: string) =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').join(separator)
+      : asString(value)
+
   return {
-    homeBackgroundImage: meta.homeBackgroundImage || '',
-    scripture: meta.scripture || '',
-    heroCalloutTitle: meta.heroCalloutTitle || '',
-    heroCalloutItems: Array.isArray(meta.heroCalloutItems) ? meta.heroCalloutItems.join('\n') : (meta.heroCalloutItems || ''),
-    aboutWhy: Array.isArray(meta.aboutWhy) ? meta.aboutWhy.join('\n\n') : (meta.aboutWhy || ''),
-    galleryHeading: meta.galleryHeading || '',
-    galleryDescription: meta.galleryDescription || '',
-    visionTitle: meta.visionTitle || '',
-    visionText: meta.visionText || '',
-    missionTitle: meta.missionTitle || '',
-    missionText: meta.missionText || '',
-    faithPoints: Array.isArray(meta.faithPoints) ? meta.faithPoints.join('\n') : (meta.faithPoints || ''),
+    homeBackgroundImage: asString(meta.homeBackgroundImage),
+    scripture: asString(meta.scripture),
+    heroCalloutTitle: asString(meta.heroCalloutTitle),
+    heroCalloutItems: asJoinedString(meta.heroCalloutItems, '\n'),
+    aboutWhy: asJoinedString(meta.aboutWhy, '\n\n'),
+    galleryHeading: asString(meta.galleryHeading),
+    galleryDescription: asString(meta.galleryDescription),
+    visionTitle: asString(meta.visionTitle),
+    visionText: asString(meta.visionText),
+    missionTitle: asString(meta.missionTitle),
+    missionText: asString(meta.missionText),
+    faithPoints: asJoinedString(meta.faithPoints, '\n'),
     ministriesJson: meta.ministries ? JSON.stringify(meta.ministries, null, 2) : '',
     eventsJson: meta.events ? JSON.stringify(meta.events, null, 2) : '',
     booksJson: meta.books ? JSON.stringify(meta.books, null, 2) : '',
-    booksSectionHeading: meta.booksSectionHeading || '',
-    booksSectionDescription: meta.booksSectionDescription || '',
-    contactEmail: meta.contactEmail || '',
-    contactPhone: meta.contactPhone || '',
-    contactLocation: meta.contactLocation || '',
-    giveOnlineHeading: meta.giveOnlineHeading || '',
-    giveOnlineIntroduction: meta.giveOnlineIntroduction || '',
-    giveOnlineButtonText: meta.giveOnlineButtonText || '',
-    giveOnlineButtonUrl: meta.giveOnlineButtonUrl || '',
-    givingButtonsJson: Array.isArray(meta.givingButtons) ? JSON.stringify(meta.givingButtons, null, 2) : (meta.givingButtonsJson || ''),
-    bankName: meta.bankName || '',
-    accountName: meta.accountName || '',
-    accountNumber: meta.accountNumber || '',
-    branch: meta.branch || '',
-    swiftCode: meta.swiftCode || '',
-    mobileMoneyProvider: meta.mobileMoneyProvider || '',
-    mobileMoneyNumber: meta.mobileMoneyNumber || '',
-    mobileMoneyRegisteredName: meta.mobileMoneyRegisteredName || '',
-    givingInstructions: meta.givingInstructions || '',
-    thankYouMessage: meta.thankYouMessage || '',
+    booksSectionHeading: asString(meta.booksSectionHeading),
+    booksSectionDescription: asString(meta.booksSectionDescription),
+    sermonsHeading: asString(meta.sermonsHeading),
+    sermonsDescription: asString(meta.sermonsDescription),
+    sermonsJson: Array.isArray(meta.sermons) ? JSON.stringify(meta.sermons, null, 2) : '',
+    contactEmail: asString(meta.contactEmail),
+    contactPhone: asString(meta.contactPhone),
+    contactLocation: asString(meta.contactLocation),
+    giveOnlineHeading: asString(meta.giveOnlineHeading),
+    giveOnlineIntroduction: asString(meta.giveOnlineIntroduction),
+    giveOnlineButtonText: asString(meta.giveOnlineButtonText),
+    giveOnlineButtonUrl: asString(meta.giveOnlineButtonUrl),
+    givingButtonsJson: Array.isArray(meta.givingButtons) ? JSON.stringify(meta.givingButtons, null, 2) : asString(meta.givingButtonsJson),
+    bankName: asString(meta.bankName),
+    accountName: asString(meta.accountName),
+    accountNumber: asString(meta.accountNumber),
+    branch: asString(meta.branch),
+    swiftCode: asString(meta.swiftCode),
+    mobileMoneyProvider: asString(meta.mobileMoneyProvider),
+    mobileMoneyNumber: asString(meta.mobileMoneyNumber),
+    mobileMoneyRegisteredName: asString(meta.mobileMoneyRegisteredName),
+    givingInstructions: asString(meta.givingInstructions),
+    thankYouMessage: asString(meta.thankYouMessage),
   }
 }
 
-function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: string[]) {
+function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: string[], sermons: SermonItem[]) {
   function parseJsonSafe(s: string) { try { return JSON.parse(s) } catch { return undefined } }
   return {
     homeBackgroundImage: f.homeBackgroundImage,
@@ -149,6 +198,9 @@ function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: 
     books,
     booksSectionHeading: f.booksSectionHeading,
     booksSectionDescription: f.booksSectionDescription,
+    sermonsHeading: f.sermonsHeading,
+    sermonsDescription: f.sermonsDescription,
+    sermons: sermons.length > 0 ? sermons : parseJsonSafe(f.sermonsJson),
     contactEmail: f.contactEmail,
     contactPhone: f.contactPhone,
     contactLocation: f.contactLocation,
@@ -173,10 +225,16 @@ function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: 
 const fieldStyle = { display: 'block' as const, width: '100%', padding: 8, marginTop: 4, border: '1px solid #ccc' }
 const sectionHead = { fontWeight: 700, fontSize: 15, margin: '20px 0 4px', borderBottom: '2px solid #f5d06d', paddingBottom: 4 }
 
+function isMissingTableErrorMessage(value: unknown) {
+  const msg = String(value || '').toLowerCase()
+  return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
+}
+
 export default function EditorClient({ slug }: { slug: string }) {
-  const [base, setBase] = useState<any>({})
+  const [base, setBase] = useState<Record<string, unknown>>({})
   const [f, setF] = useState({ ...DEFAULTS })
   const [books, setBooks] = useState<BookEditorItem[]>([])
+  const [sermons, setSermons] = useState<SermonItem[]>([])
   const [galleryImages, setGalleryImages] = useState<string[]>([])
   const [deletedBookIds, setDeletedBookIds] = useState<string[]>([])
 
@@ -185,6 +243,10 @@ export default function EditorClient({ slug }: { slug: string }) {
 
   const setBook = (index: number, key: keyof BookEditorItem, value: string | boolean) => {
     setBooks((prev) => prev.map((book, i) => i === index ? { ...book, [key]: value } : book))
+  }
+
+  const setSermon = (index: number, key: keyof SermonItem, value: string) => {
+    setSermons((prev) => prev.map((sermon, i) => i === index ? { ...sermon, [key]: value } : sermon))
   }
 
   useEffect(() => {
@@ -203,6 +265,7 @@ export default function EditorClient({ slug }: { slug: string }) {
           const mapped = { ...DEFAULTS, title: data.title || '', subtitle: data.subtitle || '', body: data.body || '', banner_url: data.banner_url || '', ...metaToFlat(data.metadata) }
           setF(mapped)
           setBooks(normalizeBooksArray(data.metadata?.books))
+          setSermons(normalizeSermonsArray(data.metadata?.sermons))
           setGalleryImages(normalizeImageArray(data.metadata?.galleryImages || data.metadata?.galleryImagesJson))
         }
       })
@@ -237,7 +300,7 @@ export default function EditorClient({ slug }: { slug: string }) {
     if (!session) return alert('Sign in first')
     const token = session.access_token
 
-    const metadata = flatToMeta(f, books, galleryImages)
+    const metadata = flatToMeta(f, books, galleryImages, sermons)
     const method = base.id ? 'PUT' : 'POST'
     const payload = { id: base.id, title: f.title, subtitle: f.subtitle, body: f.body, banner_url: f.banner_url, page: 'home', slug, metadata }
     const res = await fetch('/api/content', { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) })
@@ -249,6 +312,10 @@ export default function EditorClient({ slug }: { slug: string }) {
     if (!res.ok) {
       alert(data.error || 'Error')
       return
+    }
+
+    if (data?.id) {
+      setBase(data)
     }
 
     if (slug === 'books-and-resources') {
@@ -288,8 +355,12 @@ export default function EditorClient({ slug }: { slug: string }) {
 
       if (!syncRes.ok) {
         const err = await syncRes.json().catch(() => ({ error: 'Failed to sync books table' }))
-        alert(err.error || 'Failed to sync books table')
-        return
+        if (isMissingTableErrorMessage(err.error)) {
+          console.warn('Books table sync skipped: table is not available yet. Run supabase/schema.sql or set BOOKS_TABLE.')
+        } else {
+          alert(err.error || 'Failed to sync books table')
+          return
+        }
       }
 
       if (deletedBookIds.length > 0) {
@@ -323,6 +394,14 @@ export default function EditorClient({ slug }: { slug: string }) {
     })
   }
 
+  const addSermon = () => {
+    setSermons((prev) => [...prev, emptySermon()])
+  }
+
+  const removeSermon = (index: number) => {
+    setSermons((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const input = (label: string, key: keyof typeof DEFAULTS, placeholder?: string) => (
     <div style={{ marginBottom: 8 }}>
       <label>{label}</label>
@@ -339,6 +418,7 @@ export default function EditorClient({ slug }: { slug: string }) {
 
   const isGiveOnlineEditor = slug === 'give-online'
   const isGalleryEditor = slug === 'gallery'
+  const isSermonsEditor = slug === 'sermons'
   const isHomeEditor = slug === 'home'
 
   return (
@@ -377,7 +457,7 @@ export default function EditorClient({ slug }: { slug: string }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10, marginTop: 10 }}>
               {galleryImages.map((url, index) => (
                 <div key={`${url}-${index}`} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                  <img src={url} alt={`Gallery ${index + 1}`} style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }} />
+                  <Image src={url} alt={`Gallery ${index + 1}`} width={600} height={240} unoptimized style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }} />
                   <button
                     type="button"
                     onClick={() => removeGalleryImage(index)}
@@ -392,6 +472,49 @@ export default function EditorClient({ slug }: { slug: string }) {
             <p style={{ fontSize: 13, color: '#6b7280' }}>No images uploaded yet.</p>
           )}
         </>
+      ) : isSermonsEditor ? (
+        <>
+          <p style={sectionHead}>Sermons</p>
+          {input('Page heading', 'sermonsHeading', 'Sermons')}
+          {textarea('Page description', 'sermonsDescription', 3, 'Watch recent messages and be encouraged in your faith.')}
+          {textarea('Sermons JSON backup (optional)', 'sermonsJson', 5, '[{"title":"Sunday Message","videoUrl":"https://..."}]')}
+
+          {sermons.map((sermon, index) => (
+            <div key={`${sermon.title || 'sermon'}-${index}`} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <p style={{ fontWeight: 700, marginBottom: 10 }}>Sermon {index + 1}</p>
+
+              <label>Title<input value={sermon.title} onChange={(e) => setSermon(index, 'title', e.target.value)} style={fieldStyle} /></label>
+              <label>Speaker<input value={sermon.speaker} onChange={(e) => setSermon(index, 'speaker', e.target.value)} style={fieldStyle} /></label>
+              <label>Date<input type="date" value={sermon.date} onChange={(e) => setSermon(index, 'date', e.target.value)} style={fieldStyle} /></label>
+              <label>Description<textarea value={sermon.description} onChange={(e) => setSermon(index, 'description', e.target.value)} rows={3} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+
+              <label>Video URL<input value={sermon.videoUrl} onChange={(e) => setSermon(index, 'videoUrl', e.target.value)} style={fieldStyle} /></label>
+              <div style={{ marginTop: 8, marginBottom: 8 }}>
+                <label>Upload Video</label>
+                <VideoUpload onUploaded={(url) => setSermon(index, 'videoUrl', url)} />
+              </div>
+
+              <label>Thumbnail URL (optional)<input value={sermon.thumbnailUrl} onChange={(e) => setSermon(index, 'thumbnailUrl', e.target.value)} style={fieldStyle} /></label>
+              <div style={{ marginTop: 8, marginBottom: 8 }}>
+                <label>Upload Thumbnail</label>
+                <ImageUpload onUploaded={(url) => setSermon(index, 'thumbnailUrl', url)} />
+                {sermon.thumbnailUrl ? <Image src={sermon.thumbnailUrl} alt="sermon thumbnail" width={420} height={220} unoptimized style={{ maxWidth: 240, marginTop: 8, height: 'auto', borderRadius: 8 }} /> : null}
+              </div>
+
+              {sermon.videoUrl ? (
+                <video controls preload="metadata" style={{ width: '100%', maxWidth: 480, marginTop: 8, borderRadius: 8 }} src={sermon.videoUrl} />
+              ) : null}
+
+              <button type="button" onClick={() => removeSermon(index)} style={{ marginTop: 10, border: '1px solid #dc2626', color: '#dc2626', background: 'transparent', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+                Remove sermon
+              </button>
+            </div>
+          ))}
+
+          <button type="button" onClick={addSermon} style={{ border: '1px solid #0b2340', background: '#fff', color: '#0b2340', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+            Add Sermon
+          </button>
+        </>
       ) : (
         <>
           <p style={sectionHead}>Hero</p>
@@ -403,7 +526,7 @@ export default function EditorClient({ slug }: { slug: string }) {
               <div style={{ marginBottom: 8 }}>
                 <label>Home Background Image Upload</label>
                 <ImageUpload onUploaded={(url) => setF(prev => ({ ...prev, homeBackgroundImage: url }))} />
-                {f.homeBackgroundImage && <img src={f.homeBackgroundImage} alt="home background" style={{ maxWidth: 320, marginTop: 8 }} />}
+                {f.homeBackgroundImage && <Image src={f.homeBackgroundImage} alt="home background" width={640} height={360} unoptimized style={{ maxWidth: 320, marginTop: 8, height: 'auto' }} />}
               </div>
             </>
           ) : null}
@@ -412,7 +535,7 @@ export default function EditorClient({ slug }: { slug: string }) {
           <div style={{ marginBottom: 8 }}>
             <label>Banner Image</label>
             <ImageUpload onUploaded={(url) => setF(prev => ({ ...prev, banner_url: url }))} />
-            {f.banner_url && <img src={f.banner_url} alt="banner" style={{ maxWidth: 320, marginTop: 8 }} />}
+            {f.banner_url && <Image src={f.banner_url} alt="banner" width={640} height={360} unoptimized style={{ maxWidth: 320, marginTop: 8, height: 'auto' }} />}
           </div>
 
           <p style={sectionHead}>Scripture</p>
@@ -447,7 +570,7 @@ export default function EditorClient({ slug }: { slug: string }) {
               <div style={{ marginBottom: 8 }}>
                 <label>Book Cover Image</label>
                 <ImageUpload onUploaded={(url) => setBook(index, 'coverImageUrl', url)} />
-                {book.coverImageUrl ? <img src={book.coverImageUrl} alt="book cover" style={{ maxWidth: 180, marginTop: 8, borderRadius: 6 }} /> : null}
+                {book.coverImageUrl ? <Image src={book.coverImageUrl} alt="book cover" width={360} height={540} unoptimized style={{ maxWidth: 180, marginTop: 8, borderRadius: 6, height: 'auto' }} /> : null}
               </div>
               <label>Book title<input value={book.title || ''} onChange={(e) => setBook(index, 'title', e.target.value)} style={fieldStyle} /></label>
               <label>Author<input value={book.author || ''} onChange={(e) => setBook(index, 'author', e.target.value)} style={fieldStyle} /></label>

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
+type ErrorWithMessage = {
+  message?: string
+}
+
+type QueryResult<T> = PromiseLike<{ data: T | null; error: ErrorWithMessage | null }>
+
 const CONTENT_TABLES = [
   process.env.CONTENT_TABLE,
   process.env.CONTENT_TABLE_FALLBACK,
@@ -31,15 +37,20 @@ function createSupabaseClient(config: { supabaseUrl: string; supabaseAnonKey: st
   })
 }
 
-function isMissingTableError(error: any) {
-  const msg = (error?.message || '').toLowerCase()
+function isMissingTableError(error: unknown) {
+  const msg = String((error as ErrorWithMessage | null)?.message || '').toLowerCase()
   return msg.includes('could not find the table') || msg.includes('relation') && msg.includes('does not exist')
 }
 
+function isDuplicateSlugError(error: unknown) {
+  const msg = String((error as ErrorWithMessage | null)?.message || '').toLowerCase()
+  return msg.includes('duplicate key value violates unique constraint') && msg.includes('slug')
+}
+
 async function runWithTableFallback<T>(
-  operation: (table: string) => any
-): Promise<{ data?: T; error: any }> {
-  let lastResult: any = null
+  operation: (table: string) => QueryResult<T>
+): Promise<{ data?: T | null; error: ErrorWithMessage | null }> {
+  let lastResult: { data: T | null; error: ErrorWithMessage | null } | null = null
 
   for (const table of CONTENT_TABLES) {
     const result = await operation(table)
@@ -108,9 +119,23 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const payload = { page: 'home', ...body }
   const supabase = createSupabaseClient(config, auth.token)
-  const { data, error } = await runWithTableFallback((table) =>
+
+  const insertResult = await runWithTableFallback((table) =>
     supabase.from(table).insert([payload]).select().single()
   )
+
+  if (!insertResult.error) {
+    return NextResponse.json(insertResult.data)
+  }
+
+  if (!payload.slug || !isDuplicateSlugError(insertResult.error)) {
+    return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
+  }
+
+  const { data, error } = await runWithTableFallback((table) =>
+    supabase.from(table).update(payload).eq('slug', payload.slug).select().single()
+  )
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

@@ -1,42 +1,73 @@
 "use client"
 import React, { useEffect, useState } from 'react'
-import supabase from '../lib/supabaseClient'
+import type { Session } from '@supabase/supabase-js'
+import supabase, { isSupabaseConfigured } from '../lib/supabaseClient'
 
-export default function Auth({ onAuth }: { onAuth?: (session: any) => void }) {
+export default function Auth({ onAuth }: { onAuth?: (session: Session | null) => void }) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [session, setSession] = useState<any>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setSession(data.session)
-  })
+    if (!isSupabaseConfigured()) {
+      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      return
+    }
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session)
-    onAuth?.(session)
-  })
+    let subscription: { unsubscribe: () => void } | null = null
 
-  return () => subscription.unsubscribe()
-}, [onAuth])
+    try {
+      supabase.auth.getSession().then(({ data }) => {
+        setSession(data.session)
+      }).catch(() => {
+        setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      })
+
+      const listener = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session)
+        onAuth?.(session)
+      })
+      subscription = listener.data.subscription
+    } catch {
+      queueMicrotask(() => {
+        setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      })
+    }
+
+    return () => subscription?.unsubscribe()
+  }, [onAuth])
 
   const signIn = async () => {
-    setLoading(true)
-   await supabase.auth.signInWithOtp({
-  email,
-  options: {
-    emailRedirectTo: `${window.location.origin}/admin`,
-  },
-}) 
-    setLoading(false)
-    alert('Check your email for a sign-in link')
+    if (!isSupabaseConfigured()) {
+      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      setErrorMessage('')
+      await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/admin`,
+        },
+      })
+      alert('Check your email for a sign-in link')
+    } catch {
+      setErrorMessage('Unable to sign in. Verify Supabase environment variables and try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    setSession(null)
+    try {
+      await supabase.auth.signOut()
+      setSession(null)
+    } catch {
+      setErrorMessage('Unable to sign out right now. Please refresh and try again.')
+    }
   }
 
   if (session?.user) {
@@ -50,6 +81,11 @@ export default function Auth({ onAuth }: { onAuth?: (session: any) => void }) {
 
   return (
     <div>
+      {errorMessage ? (
+        <p style={{ color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', padding: 10, borderRadius: 8, marginBottom: 10 }}>
+          {errorMessage}
+        </p>
+      ) : null}
       <label>
         Email
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@domain.com" />

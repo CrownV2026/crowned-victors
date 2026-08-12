@@ -3,6 +3,10 @@ import { getSupabasePublicConfig } from './supabaseConfig'
 
 let cachedSupabaseClient: SupabaseClient | null = null
 
+export function isSupabaseConfigured() {
+  return !!getSupabasePublicConfig()
+}
+
 function getSupabaseClient() {
   if (cachedSupabaseClient) {
     return cachedSupabaseClient
@@ -27,7 +31,7 @@ const supabase = new Proxy({} as SupabaseClient, {
       )
     }
 
-    const value = Reflect.get(client as any, prop, receiver)
+    const value = Reflect.get(client as unknown as object, prop, receiver)
     return typeof value === 'function' ? value.bind(client) : value
   },
 })

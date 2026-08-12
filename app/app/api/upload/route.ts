@@ -2,10 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'images'
+const RAW_BUCKETS = [
+  process.env.SUPABASE_STORAGE_BUCKET,
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET,
+  'images',
+  'Images',
+]
+
+const BUCKET_CANDIDATES = RAW_BUCKETS
+  .filter(Boolean)
+  .map((name) => String(name).trim())
+  .filter((name, idx, arr) => Boolean(name) && arr.indexOf(name) === idx)
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function isBucketNotFoundError(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('bucket not found') || normalized.includes('not found') && normalized.includes('bucket')
 }
 
 async function getUserFromRequest(req: NextRequest) {
@@ -57,22 +72,42 @@ export async function POST(req: NextRequest) {
       global: { headers: { Authorization: `Bearer ${token}` } },
     })
 
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-        headers: { Authorization: `Bearer ${token}` },
-      })
+    let selectedBucket: string | null = null
+    let lastUploadError: Error | null = null
 
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+    for (const bucket of BUCKET_CANDIDATES) {
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          headers: { Authorization: `Bearer ${token}` },
+        })
+
+      if (!uploadError) {
+        selectedBucket = bucket
+        lastUploadError = null
+        break
+      }
+
+      lastUploadError = uploadError
+      if (!isBucketNotFoundError(uploadError.message || '')) {
+        return NextResponse.json({ error: uploadError.message }, { status: 500 })
+      }
     }
 
-    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+    if (!selectedBucket) {
+      const attemptedBuckets = BUCKET_CANDIDATES.join(', ')
+      const baseError = lastUploadError?.message || 'Bucket not found'
+      const guidance = `Set SUPABASE_STORAGE_BUCKET (or NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET) to an existing Supabase Storage bucket. Attempted: ${attemptedBuckets}`
+      return NextResponse.json({ error: `${baseError}. ${guidance}` }, { status: 500 })
+    }
 
-    return NextResponse.json({ path, url: urlData.publicUrl })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Upload failed' }, { status: 500 })
+    const { data: urlData } = supabase.storage.from(selectedBucket).getPublicUrl(path)
+
+    return NextResponse.json({ path, url: urlData.publicUrl, bucket: selectedBucket })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Upload failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

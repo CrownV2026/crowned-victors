@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { BookItem, canBuyHardCopy, canBuyOnline, getBookCurrency, getBookPrice, normalizeBook } from '../lib/bookPurchase'
 
 type BooksSectionProps = {
@@ -32,7 +33,7 @@ export default function BooksSection({ books, heading, description }: BooksSecti
             <article key={`${book.title}-${bookRef}`} className="flex h-full flex-col rounded-[1.25rem] border border-[#D4AF37]/20 bg-white p-5 shadow-sm">
               <div className="relative mb-4 overflow-hidden rounded-xl border border-[#D4AF37]/20 bg-[#f9f2dd]">
                 {book.coverImageUrl ? (
-                  <img src={book.coverImageUrl} alt={`${book.title} cover`} className="h-52 w-full object-cover" />
+                  <Image src={book.coverImageUrl} alt={`${book.title} cover`} width={800} height={624} unoptimized className="h-52 w-full object-cover" />
                 ) : (
                   <div className="flex h-52 items-center justify-center px-4 text-center text-sm font-semibold uppercase tracking-[0.18em] text-[#0B1F3A]/55">
                     Crowned Victors Book

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import Image from 'next/image'
 import BooksSection from '../components/BooksSection'
 import { BookItem, normalizeBook } from '../lib/bookPurchase'
 import { getSupabasePublicConfig } from '../lib/supabaseConfig'
@@ -11,16 +12,37 @@ type ContentRow = {
   page: string
   title: string | null
   subtitle: string | null
-  body: any
-  metadata: any
+  body: unknown
+  metadata: Record<string, unknown> | null
   banner_url: string | null
   updated_at: string | null
 }
 
 const CONTENT_TABLES = ['content', 'posts', 'post']
+const RAW_BOOK_TABLES = [
+  process.env.BOOKS_TABLE,
+  process.env.BOOKS_TABLE_FALLBACK,
+  'books',
+  'public.books',
+  'public books',
+]
 
-function isMissingTableError(error: any) {
-  const msg = String(error?.message || '').toLowerCase()
+const BOOK_TABLES = RAW_BOOK_TABLES
+  .flatMap((value) => {
+    const trimmed = String(value || '').trim().replace(/"/g, '')
+    if (!trimmed) return []
+
+    const dotted = trimmed.replace(/\s+/g, '.')
+    if (!dotted.includes('.')) return [dotted]
+
+    const parts = dotted.split('.').filter(Boolean)
+    const tableOnly = parts[parts.length - 1]
+    return [dotted, tableOnly]
+  })
+  .filter((value, idx, arr) => arr.indexOf(value) === idx)
+
+function isMissingTableError(error: unknown) {
+  const msg = String((error as { message?: string } | null)?.message || '').toLowerCase()
   return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
 }
 
@@ -56,59 +78,117 @@ async function getPublishedBooks(): Promise<BookItem[] | null> {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const { data, error } = await supabase
-    .from('books')
-    .select('*')
-    .eq('is_published', true)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true })
+  for (const table of BOOK_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('is_published', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
 
-  if (error) {
-    if (isMissingTableError(error)) return null
-    return null
+    if (error) {
+      if (isMissingTableError(error)) continue
+      continue
+    }
+
+    if (!Array.isArray(data)) return []
+
+    return data.map((row) => {
+      const record = row as Record<string, unknown>
+      return normalizeBook({
+        id: toOptionalString(record.id),
+        title: toOptionalString(record.title),
+        author: toOptionalString(record.author),
+        coverImageUrl: toOptionalString(record.cover_image_url),
+        description: toOptionalString(record.short_description),
+        fullDescription: toOptionalString(record.full_description),
+        price: typeof record.price === 'string' || typeof record.price === 'number' ? record.price : undefined,
+        currency: toOptionalString(record.currency),
+        status: toOptionalString(record.status),
+        isbn: toOptionalString(record.isbn),
+        publishedDate: toOptionalString(record.published_date),
+        isPublished: toOptionalBoolean(record.is_published),
+        onlinePurchaseEnabled: toOptionalBoolean(record.online_purchase_enabled),
+        hardCopyEnabled: toOptionalBoolean(record.hard_copy_enabled),
+        paymentProviderName: toOptionalString(record.payment_provider_name),
+        paymentUrl: toOptionalString(record.payment_url),
+        paymentInstructions: toOptionalString(record.payment_instructions),
+        downloadUrl: toOptionalString(record.download_url),
+        deliveryContactLink: toOptionalString(record.delivery_contact_link),
+        deliveryInstructions: toOptionalString(record.delivery_instructions),
+        sortOrder: toOptionalNumber(record.sort_order),
+      })
+    })
   }
 
-  if (!Array.isArray(data)) return []
-
-  return data.map((row: any) => normalizeBook({
-    id: row.id,
-    title: row.title,
-    author: row.author,
-    coverImageUrl: row.cover_image_url,
-    description: row.short_description,
-    fullDescription: row.full_description,
-    price: row.price,
-    currency: row.currency,
-    status: row.status,
-    isbn: row.isbn,
-    publishedDate: row.published_date,
-    isPublished: row.is_published,
-    onlinePurchaseEnabled: row.online_purchase_enabled,
-    hardCopyEnabled: row.hard_copy_enabled,
-    paymentProviderName: row.payment_provider_name,
-    paymentUrl: row.payment_url,
-    paymentInstructions: row.payment_instructions,
-    downloadUrl: row.download_url,
-    deliveryContactLink: row.delivery_contact_link,
-    deliveryInstructions: row.delivery_instructions,
-    sortOrder: row.sort_order,
-  }))
+  return null
 }
 
-function normalizeBodyText(body: any) {
+function normalizeBodyText(body: unknown) {
   if (typeof body === 'string' && body.trim()) return body
   if (Array.isArray(body)) {
     const joined = body.filter((item) => typeof item === 'string').join('\n\n').trim()
     if (joined) return joined
   }
   if (body && typeof body === 'object') {
-    if (typeof body.text === 'string' && body.text.trim()) return body.text
-    if (typeof body.content === 'string' && body.content.trim()) return body.content
+    const record = body as Record<string, unknown>
+    if (typeof record.text === 'string' && record.text.trim()) return record.text
+    if (typeof record.content === 'string' && record.content.trim()) return record.content
   }
   return null
 }
 
-function parseMetadataJson(value: any) {
+function toOptionalString(value: unknown) {
+  return typeof value === 'string' ? value : undefined
+}
+
+function toOptionalBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function toOptionalNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function toText(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value : fallback
+}
+
+function toStringArray(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback
+  const items = value
+    .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+    .map((item) => item.trim())
+  return items.length > 0 ? items : fallback
+}
+
+function toMinistryArray(value: unknown, fallback: Array<{ title: string; description: string }>) {
+  if (!Array.isArray(value)) return fallback
+  const items = value
+    .map((item) => {
+      const record = item as Record<string, unknown>
+      const title = typeof record.title === 'string' ? record.title.trim() : ''
+      const description = typeof record.description === 'string' ? record.description.trim() : ''
+      return { title, description }
+    })
+    .filter((item) => Boolean(item.title) && Boolean(item.description))
+  return items.length > 0 ? items : fallback
+}
+
+function toEventArray(value: unknown, fallback: Array<{ title: string; detail: string }>) {
+  if (!Array.isArray(value)) return fallback
+  const items = value
+    .map((item) => {
+      const record = item as Record<string, unknown>
+      const title = typeof record.title === 'string' ? record.title.trim() : ''
+      const detail = typeof record.detail === 'string' ? record.detail.trim() : ''
+      return { title, detail }
+    })
+    .filter((item) => Boolean(item.title) && Boolean(item.detail))
+  return items.length > 0 ? items : fallback
+}
+
+function parseMetadataJson(value: unknown): unknown[] {
   if (Array.isArray(value)) return value
   if (typeof value === 'string') {
     try {
@@ -173,7 +253,7 @@ const DEFAULT_FAITH_POINTS = [
 
 export default async function Home() {
   // Fetch each slug in parallel — matches the admin dashboard's separate slug pages
-  const [home, galleryRow, aboutRow, visionRow, missionRow, faithRow, ministriesRow, eventsRow, booksRow, contactRow, scriptureRow, giveOnlineRow, publishedBooks] = await Promise.all([
+  const [home, galleryRow, aboutRow, visionRow, missionRow, faithRow, ministriesRow, eventsRow, booksRow, contactRow, scriptureRow, publishedBooks] = await Promise.all([
     getContentBySlug('home'),
     getContentBySlug('gallery'),
     getContentBySlug('about'),
@@ -185,55 +265,43 @@ export default async function Home() {
     getContentBySlug('books-and-resources'),
     getContentBySlug('contacts'),
     getContentBySlug('scripture-banner'),
-    getContentBySlug('give-online'),
     getPublishedBooks(),
   ])
 
   // Helper: pick first truthy value from a slug's metadata, then from home's metadata, then the default
-  const m = (row: ContentRow | null, key: string) => row?.metadata?.[key] || home?.metadata?.[key]
+  const m = (row: ContentRow | null, key: string): unknown => row?.metadata?.[key] ?? home?.metadata?.[key]
 
   const heroTitle = home?.title || 'Crowned Victors'
   const heroSubtitle = home?.subtitle || 'Equipping the saints to walk in bold faith, spiritual authority, and kingdom purpose.'
   const aboutBody = normalizeBodyText(aboutRow?.body) || normalizeBodyText(home?.body)
-  const scripture = m(scriptureRow, 'scripture') || '"And I saw, and behold a white horse..." — Revelation 6:2'
-  const heroCalloutTitle = m(home, 'heroCalloutTitle') || 'Raising a people who live in victory, not fear.'
-  const heroCalloutItems: string[] = home?.metadata?.heroCalloutItems?.length ? home.metadata.heroCalloutItems : ['Prayer-centered worship and spiritual renewal', 'Kingdom discipleship for every generation', 'A strong culture of service, compassion, and impact']
-  const aboutWhy: string[] = m(aboutRow, 'aboutWhy')?.length ? m(aboutRow, 'aboutWhy') : ['We create space for prayer, worship, discipleship, and community so people can experience lasting renewal and purposeful devotion.', 'Every gathering is designed to strengthen believers and prepare them to impact homes, churches, and cities with hope.']
-  const visionTitle = m(visionRow, 'visionTitle') || 'To raise a generation of crowned victors who shine with the glory of God.'
-  const visionText = m(visionRow, 'visionText') || 'We envision churches, homes, and communities filled with believers who walk in holiness, wisdom, and spiritual authority.'
-  const missionTitle = m(missionRow, 'missionTitle') || 'To equip the saints through prayer, teaching, worship, and service.'
-  const missionText = m(missionRow, 'missionText') || 'Our mission is to strengthen believers in their daily walk so they can stand firm, lead with integrity, and serve with love.'
-  const faithPoints: string[] = m(faithRow, 'faithPoints')?.length ? m(faithRow, 'faithPoints') : DEFAULT_FAITH_POINTS
-  const ministries: Array<{ title: string; description: string }> = m(ministriesRow, 'ministries')?.length ? m(ministriesRow, 'ministries') : DEFAULT_MINISTRIES
-  const events: Array<{ title: string; detail: string }> = m(eventsRow, 'events')?.length ? m(eventsRow, 'events') : DEFAULT_EVENTS
-  const galleryHeading = m(galleryRow, 'galleryHeading') || 'Gallery'
-  const galleryDescription = m(galleryRow, 'galleryDescription') || 'Moments from worship, fellowship, outreach, and ministry gatherings.'
-  const galleryImages: string[] = parseMetadataJson(m(galleryRow, 'galleryImages') || m(galleryRow, 'galleryImagesJson')).filter((url: any) => typeof url === 'string' && url.trim())
-  const booksFromMetadata: BookItem[] = m(booksRow, 'books')?.length ? m(booksRow, 'books').map((book: any) => normalizeBook(book)) : DEFAULT_BOOKS.map((book) => normalizeBook(book))
+  const scripture = toText(m(scriptureRow, 'scripture'), '"And I saw, and behold a white horse..." — Revelation 6:2')
+  const heroCalloutTitle = toText(m(home, 'heroCalloutTitle'), 'Raising a people who live in victory, not fear.')
+  const heroCalloutItems: string[] = toStringArray(home?.metadata?.heroCalloutItems, ['Prayer-centered worship and spiritual renewal', 'Kingdom discipleship for every generation', 'A strong culture of service, compassion, and impact'])
+  const aboutWhy: string[] = toStringArray(m(aboutRow, 'aboutWhy'), ['We create space for prayer, worship, discipleship, and community so people can experience lasting renewal and purposeful devotion.', 'Every gathering is designed to strengthen believers and prepare them to impact homes, churches, and cities with hope.'])
+  const visionTitle = toText(m(visionRow, 'visionTitle'), 'To raise a generation of crowned victors who shine with the glory of God.')
+  const visionText = toText(m(visionRow, 'visionText'), 'We envision churches, homes, and communities filled with believers who walk in holiness, wisdom, and spiritual authority.')
+  const missionTitle = toText(m(missionRow, 'missionTitle'), 'To equip the saints through prayer, teaching, worship, and service.')
+  const missionText = toText(m(missionRow, 'missionText'), 'Our mission is to strengthen believers in their daily walk so they can stand firm, lead with integrity, and serve with love.')
+  const faithPoints: string[] = toStringArray(m(faithRow, 'faithPoints'), DEFAULT_FAITH_POINTS)
+  const ministries: Array<{ title: string; description: string }> = toMinistryArray(m(ministriesRow, 'ministries'), DEFAULT_MINISTRIES)
+  const events: Array<{ title: string; detail: string }> = toEventArray(m(eventsRow, 'events'), DEFAULT_EVENTS)
+  const galleryHeading = toText(m(galleryRow, 'galleryHeading'), 'Gallery')
+  const galleryDescription = toText(m(galleryRow, 'galleryDescription'), 'Moments from worship, fellowship, outreach, and ministry gatherings.')
+  const galleryImages: string[] = parseMetadataJson(m(galleryRow, 'galleryImages') || m(galleryRow, 'galleryImagesJson')).filter(
+    (url): url is string => typeof url === 'string' && Boolean(url.trim())
+  )
+  const booksFromMetadataSource = m(booksRow, 'books')
+  const booksFromMetadata: BookItem[] = Array.isArray(booksFromMetadataSource) && booksFromMetadataSource.length > 0
+    ? booksFromMetadataSource.map((book) => normalizeBook(book as Partial<BookItem>))
+    : DEFAULT_BOOKS.map((book) => normalizeBook(book))
   const books: BookItem[] = publishedBooks && publishedBooks.length > 0 ? publishedBooks : booksFromMetadata
-  const booksSectionHeading = booksRow?.metadata?.booksSectionHeading || 'Book Store'
-  const booksSectionDescription = booksRow?.metadata?.booksSectionDescription || 'Buy soft copies online or order hard copies for delivery.'
-  const contactEmail = m(contactRow, 'contactEmail') || 'hello@crownedvictorsministry.org'
-  const contactPhone = m(contactRow, 'contactPhone') || '+1 (234) 567-890'
-  const contactLocation = m(contactRow, 'contactLocation') || 'Serving communities with faith, prayer, and purpose'
+  const booksSectionHeading = toText(booksRow?.metadata?.booksSectionHeading, 'Book Store')
+  const booksSectionDescription = toText(booksRow?.metadata?.booksSectionDescription, 'Buy soft copies online or order hard copies for delivery.')
+  const contactEmail = toText(m(contactRow, 'contactEmail'), 'hello@crownedvictorsministry.org')
+  const contactPhone = toText(m(contactRow, 'contactPhone'), '+1 (234) 567-890')
+  const contactLocation = toText(m(contactRow, 'contactLocation'), 'Serving communities with faith, prayer, and purpose')
   const bannerUrl = home?.banner_url || aboutRow?.banner_url
-  const homeBackgroundImage = m(home, 'homeBackgroundImage') || ''
-  const giveOnlineMeta = giveOnlineRow?.metadata || home?.metadata || {}
-  const giveOnlineHeading = giveOnlineMeta.giveOnlineHeading || 'Give Online'
-  const giveOnlineIntroduction = giveOnlineMeta.giveOnlineIntroduction || 'Your generosity helps advance the work of Crowned Victors Ministry.'
-  const giveOnlineButtonText = giveOnlineMeta.giveOnlineButtonText || 'Give Online'
-  const giveOnlineButtonUrl = giveOnlineMeta.giveOnlineButtonUrl || '#give-online'
-  const givingButtons = parseMetadataJson(giveOnlineMeta.givingButtons || giveOnlineMeta.givingButtonsJson)
-  const bankName = giveOnlineMeta.bankName || 'First Bank'
-  const accountName = giveOnlineMeta.accountName || 'Crowned Victors Ministry'
-  const accountNumber = giveOnlineMeta.accountNumber || '0000000000'
-  const branch = giveOnlineMeta.branch || 'Main Branch'
-  const swiftCode = giveOnlineMeta.swiftCode || 'FBNINGLA'
-  const mobileMoneyProvider = giveOnlineMeta.mobileMoneyProvider || 'MTN Mobile Money'
-  const mobileMoneyNumber = giveOnlineMeta.mobileMoneyNumber || '+233 000 000 000'
-  const mobileMoneyRegisteredName = giveOnlineMeta.mobileMoneyRegisteredName || 'Crowned Victors Ministry'
-  const givingInstructions = giveOnlineMeta.givingInstructions || 'Please include your full name and the purpose of your gift.'
-  const thankYouMessage = giveOnlineMeta.thankYouMessage || 'Every act of generosity is a seed of kingdom impact.'
+  const homeBackgroundImage = toText(m(home, 'homeBackgroundImage'), '')
 
   const homeSurfaceStyle = homeBackgroundImage
     ? {
@@ -259,14 +327,38 @@ export default async function Home() {
           <a href="#ministries" className="transition hover:text-[#D4AF37]">
             Ministries
           </a>
-          <a href="/app/gallery" className="transition hover:text-[#D4AF37]">
+          <a href="/gallery" className="transition hover:text-[#D4AF37]">
             Gallery
+          </a>
+          <a href="/sermons" className="transition hover:text-[#D4AF37]">
+            Sermons
           </a>
           <a href="#contact" className="transition hover:text-[#D4AF37]">
             Contact
           </a>
         </nav>
       </header>
+
+      <nav className="mx-auto mb-4 flex max-w-7xl flex-wrap gap-3 px-4 text-sm font-medium text-[#0B1F3A]/85 sm:px-6 md:hidden lg:px-8">
+        <a href="#about" className="transition hover:text-[#D4AF37]">
+          About
+        </a>
+        <a href="#vision" className="transition hover:text-[#D4AF37]">
+          Vision
+        </a>
+        <a href="#ministries" className="transition hover:text-[#D4AF37]">
+          Ministries
+        </a>
+        <a href="/gallery" className="transition hover:text-[#D4AF37]">
+          Gallery
+        </a>
+        <a href="/sermons" className="transition hover:text-[#D4AF37]">
+          Sermons
+        </a>
+        <a href="#contact" className="transition hover:text-[#D4AF37]">
+          Contact
+        </a>
+      </nav>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-16 sm:px-6 lg:px-8 lg:gap-8 lg:pb-24">
         <section
@@ -295,20 +387,17 @@ export default async function Home() {
                 >
                   Learn More
                 </a>
-                <a
-                  href={giveOnlineButtonUrl}
-                  className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/10 px-6 py-3 text-base font-semibold text-white transition hover:bg-white/20"
-                >
-                  {giveOnlineButtonText}
-                </a>
               </div>
             </div>
 
             <div className="rounded-[1.5rem] border border-white/10 bg-white/10 p-6 backdrop-blur">
               {bannerUrl && (
-                <img
+                <Image
                   src={bannerUrl}
                   alt="Latest banner"
+                  width={1200}
+                  height={528}
+                  unoptimized
                   className="mb-4 h-44 w-full rounded-xl object-cover"
                 />
               )}
@@ -428,7 +517,7 @@ export default async function Home() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {galleryImages.map((url, index) => (
                 <div key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/20 bg-[#fffdf8]">
-                  <img src={url} alt={`Gallery photo ${index + 1}`} className="h-56 w-full object-cover" />
+                  <Image src={url} alt={`Gallery photo ${index + 1}`} width={1200} height={672} unoptimized className="h-56 w-full object-cover" />
                 </div>
               ))}
             </div>
@@ -440,59 +529,6 @@ export default async function Home() {
         </section>
 
         <BooksSection books={books} heading={booksSectionHeading} description={booksSectionDescription} />
-
-        <section id="give-online" className="rounded-[1.75rem] border border-[#D4AF37]/25 bg-[#fffdf8] p-8 shadow-sm">
-          <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">Give Online</p>
-              <h3 className="mt-3 text-3xl font-semibold text-[#0B1F3A]">{giveOnlineHeading}</h3>
-              <p className="mt-4 text-lg leading-8 text-[#0B1F3A]/75">{giveOnlineIntroduction}</p>
-              {givingButtons.length > 0 && (
-                <div className="mt-6 flex flex-wrap gap-3">
-                  {givingButtons.map((button: { label?: string; url?: string }, index: number) => (
-                    <a
-                      key={`${button.label || 'button'}-${index}`}
-                      href={button.url || '#give-online'}
-                      className="inline-flex items-center justify-center rounded-full bg-[#D4AF37] px-5 py-2.5 text-sm font-semibold text-[#0B1F3A] transition hover:bg-[#e0bf4a]"
-                    >
-                      {button.label || 'Give Now'}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="rounded-[1.25rem] border border-[#D4AF37]/20 bg-white p-6 shadow-sm">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">Bank Transfer</p>
-                  <div className="mt-4 space-y-2 text-base text-[#0B1F3A]/80">
-                    <p><strong>Bank:</strong> {bankName}</p>
-                    <p><strong>Account Name:</strong> {accountName}</p>
-                    <p><strong>Account Number:</strong> {accountNumber}</p>
-                    <p><strong>Branch:</strong> {branch}</p>
-                    <p><strong>SWIFT:</strong> {swiftCode}</p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">Mobile Money</p>
-                  <div className="mt-4 space-y-2 text-base text-[#0B1F3A]/80">
-                    <p><strong>Provider:</strong> {mobileMoneyProvider}</p>
-                    <p><strong>Number:</strong> {mobileMoneyNumber}</p>
-                    <p><strong>Registered Name:</strong> {mobileMoneyRegisteredName}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-6 rounded-2xl border border-[#D4AF37]/20 bg-[#fffdf8] p-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">How to Give</p>
-                <p className="mt-2 text-base leading-8 text-[#0B1F3A]/80">{givingInstructions}</p>
-              </div>
-              <div className="mt-4 rounded-2xl border border-[#D4AF37]/20 bg-[#f7efd4] p-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">Bible verse / thank-you</p>
-                <p className="mt-2 text-base leading-8 text-[#0B1F3A]/80">{thankYouMessage}</p>
-              </div>
-            </div>
-          </div>
-        </section>
 
         <section id="contact" className="rounded-[1.75rem] border border-[#D4AF37]/25 bg-[#0B1F3A] p-8 text-white shadow-sm">
           <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">

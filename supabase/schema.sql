@@ -106,7 +106,13 @@ create policy "books_admin_select_all"
   for select
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "books_admin_insert" on books;
@@ -115,7 +121,13 @@ create policy "books_admin_insert"
   for insert
   to authenticated
   with check (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "books_admin_update" on books;
@@ -124,10 +136,22 @@ create policy "books_admin_update"
   for update
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   )
   with check (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "books_admin_delete" on books;
@@ -136,7 +160,13 @@ create policy "books_admin_delete"
   for delete
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "book_orders_insert_public" on book_orders;
@@ -152,7 +182,13 @@ create policy "book_orders_admin_select"
   for select
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "book_orders_admin_update" on book_orders;
@@ -161,10 +197,22 @@ create policy "book_orders_admin_update"
   for update
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   )
   with check (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );
 
 drop policy if exists "book_orders_admin_delete" on book_orders;
@@ -173,5 +221,11 @@ create policy "book_orders_admin_delete"
   for delete
   to authenticated
   using (
-    coalesce((auth.jwt() -> 'user_metadata' ->> 'role'), auth.jwt() ->> 'role', '') = 'admin'
+    coalesce(
+      (auth.jwt() -> 'user_metadata' ->> 'role'),
+      (auth.jwt() -> 'app_metadata' ->> 'role'),
+      auth.jwt() ->> 'role',
+      ''
+    ) = 'admin'
+    or lower(coalesce(auth.jwt() ->> 'email', '')) = 'crownedvictors2019@gmail.com'
   );

@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
+const DEFAULT_ADMIN_EMAILS = ['crownedvictors2019@gmail.com']
+const RAW_BOOK_TABLES = [
+  process.env.BOOKS_TABLE,
+  process.env.BOOKS_TABLE_FALLBACK,
+  'books',
+  'public.books',
+  'public books',
+]
+
+const BOOK_TABLES = RAW_BOOK_TABLES
+  .flatMap((value) => {
+    const trimmed = String(value || '').trim().replace(/"/g, '')
+    if (!trimmed) return []
+
+    const dotted = trimmed.replace(/\s+/g, '.')
+    if (!dotted.includes('.')) return [dotted]
+
+    const parts = dotted.split('.').filter(Boolean)
+    const tableOnly = parts[parts.length - 1]
+    return [dotted, tableOnly]
+  })
+  .filter((value, idx, arr) => arr.indexOf(value) === idx)
+
 type DbBookRow = {
   id: string
   title: string
@@ -53,6 +76,17 @@ type BookPayload = {
   sortOrder?: number
 }
 
+type ErrorWithMessage = {
+  message?: string
+}
+
+type QueryResult<T> = PromiseLike<{ data: T | null; error: ErrorWithMessage | null }>
+type AuthUserLike = {
+  email?: string | null
+  user_metadata?: Record<string, unknown> | null
+  app_metadata?: Record<string, unknown> | null
+}
+
 function getConfig() {
   return getSupabasePublicConfig()
 }
@@ -71,6 +105,56 @@ function createSupabaseClient(config: { supabaseUrl: string; supabaseAnonKey: st
   })
 }
 
+function isMissingTableError(error: unknown) {
+  const msg = String((error as ErrorWithMessage | null)?.message || '').toLowerCase()
+  return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
+}
+
+async function runWithBooksTableFallback<T>(
+  operation: (table: string) => QueryResult<T>
+): Promise<{ data?: T | null; error: ErrorWithMessage | null }> {
+  let lastResult: { data: T | null; error: ErrorWithMessage | null } | null = null
+
+  for (const table of BOOK_TABLES) {
+    const result = await operation(table)
+    if (!result.error) return result
+
+    lastResult = result
+    if (!isMissingTableError(result.error)) {
+      return result
+    }
+  }
+
+  return lastResult?.error
+    ? {
+        ...lastResult,
+        error: {
+          ...lastResult.error,
+          message: `Books table is not available. Tried: ${BOOK_TABLES.join(', ')}. Set BOOKS_TABLE to your actual table name or run supabase/schema.sql.`,
+        },
+      }
+    : { data: undefined, error: { message: 'No books tables configured' } }
+}
+
+function isAdminUser(user: AuthUserLike) {
+  const userRole = typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : ''
+  const appRole = typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : ''
+  const role = (userRole || appRole).toLowerCase()
+  if (role === 'admin') return true
+
+  const configured = new Set([
+    ...DEFAULT_ADMIN_EMAILS,
+    ...(process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ])
+
+  if (!configured.size) return false
+  const currentEmail = (user.email || '').trim().toLowerCase()
+  return Boolean(currentEmail && configured.has(currentEmail))
+}
+
 async function requireAdmin(req: NextRequest, config: { supabaseUrl: string; supabaseAnonKey: string }) {
   const token = getToken(req)
   if (!token) return null
@@ -79,8 +163,7 @@ async function requireAdmin(req: NextRequest, config: { supabaseUrl: string; sup
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return null
 
-  const role = data.user.user_metadata?.role
-  if (role !== 'admin') return null
+  if (!isAdminUser(data.user)) return null
 
   return { token, user: data.user }
 }
@@ -158,14 +241,21 @@ export async function GET(req: NextRequest) {
   const auth = includeAll ? await requireAdmin(req, config) : null
   const supabase = createSupabaseClient(config, auth?.token)
 
-  let query = supabase.from('books').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true })
+  const { data, error } = await runWithBooksTableFallback((table) => {
+    let query = supabase.from(table).select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true })
 
-  if (!(includeAll && auth)) {
-    query = query.eq('is_published', true)
+    if (!(includeAll && auth)) {
+      query = query.eq('is_published', true)
+    }
+
+    return query
+  })
+  if (error) {
+    if (isMissingTableError(error)) {
+      return NextResponse.json({ books: [] })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const books = ((data || []) as DbBookRow[]).map(fromDbBook)
   return NextResponse.json({ books })
@@ -186,8 +276,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createSupabaseClient(config, auth.token)
-  const { data, error } = await supabase.from('books').insert([payload]).select('*').single()
+  const { data, error } = await runWithBooksTableFallback((table) =>
+    supabase.from(table).insert([payload]).select('*').single()
+  )
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
 
   return NextResponse.json(fromDbBook(data as DbBookRow))
 }
@@ -210,12 +303,18 @@ export async function PUT(req: NextRequest) {
       if (!payload.title) continue
 
       if (entry.id) {
-        const { data, error } = await supabase.from('books').update(payload).eq('id', entry.id).select('*').single()
+        const { data, error } = await runWithBooksTableFallback((table) =>
+          supabase.from(table).update(payload).eq('id', entry.id).select('*').single()
+        )
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        if (!data) return NextResponse.json({ error: 'Failed to update book' }, { status: 500 })
         saved.push(data as DbBookRow)
       } else {
-        const { data, error } = await supabase.from('books').insert([payload]).select('*').single()
+        const { data, error } = await runWithBooksTableFallback((table) =>
+          supabase.from(table).insert([payload]).select('*').single()
+        )
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        if (!data) return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
         saved.push(data as DbBookRow)
       }
     }
@@ -229,8 +328,11 @@ export async function PUT(req: NextRequest) {
   const payload = toDbBook(single)
   if (!payload.title) return NextResponse.json({ error: 'Book title is required' }, { status: 400 })
 
-  const { data, error } = await supabase.from('books').update(payload).eq('id', single.id).select('*').single()
+  const { data, error } = await runWithBooksTableFallback((table) =>
+    supabase.from(table).update(payload).eq('id', single.id).select('*').single()
+  )
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Failed to update book' }, { status: 500 })
 
   return NextResponse.json(fromDbBook(data as DbBookRow))
 }
@@ -246,7 +348,9 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const supabase = createSupabaseClient(config, auth.token)
-  const { error } = await supabase.from('books').delete().eq('id', id)
+  const { error } = await runWithBooksTableFallback((table) =>
+    supabase.from(table).delete().eq('id', id)
+  )
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ success: true })

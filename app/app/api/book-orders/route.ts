@@ -2,6 +2,51 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
+const DEFAULT_ADMIN_EMAILS = ['crownedvictors2019@gmail.com']
+const RAW_BOOK_TABLES = [
+  process.env.BOOKS_TABLE,
+  process.env.BOOKS_TABLE_FALLBACK,
+  'books',
+  'public.books',
+  'public books',
+]
+
+const BOOK_TABLES = RAW_BOOK_TABLES
+  .flatMap((value) => {
+    const trimmed = String(value || '').trim().replace(/"/g, '')
+    if (!trimmed) return []
+
+    const dotted = trimmed.replace(/\s+/g, '.')
+    if (!dotted.includes('.')) return [dotted]
+
+    const parts = dotted.split('.').filter(Boolean)
+    const tableOnly = parts[parts.length - 1]
+    return [dotted, tableOnly]
+  })
+  .filter((value, idx, arr) => arr.indexOf(value) === idx)
+
+const RAW_ORDER_TABLES = [
+  process.env.BOOK_ORDERS_TABLE,
+  process.env.BOOK_ORDERS_TABLE_FALLBACK,
+  'book_orders',
+  'public.book_orders',
+  'public book_orders',
+]
+
+const ORDER_TABLES = RAW_ORDER_TABLES
+  .flatMap((value) => {
+    const trimmed = String(value || '').trim().replace(/"/g, '')
+    if (!trimmed) return []
+
+    const dotted = trimmed.replace(/\s+/g, '.')
+    if (!dotted.includes('.')) return [dotted]
+
+    const parts = dotted.split('.').filter(Boolean)
+    const tableOnly = parts[parts.length - 1]
+    return [dotted, tableOnly]
+  })
+  .filter((value, idx, arr) => arr.indexOf(value) === idx)
+
 const ORDER_STATUSES = [
   'Pending',
   'Payment received',
@@ -45,6 +90,17 @@ type DbOrderRow = {
   books?: { title: string | null } | null
 }
 
+type ErrorWithMessage = {
+  message?: string
+}
+
+type QueryResult<T> = PromiseLike<{ data: T | null; error: ErrorWithMessage | null }>
+type AuthUserLike = {
+  email?: string | null
+  user_metadata?: Record<string, unknown> | null
+  app_metadata?: Record<string, unknown> | null
+}
+
 function getConfig() {
   return getSupabasePublicConfig()
 }
@@ -63,6 +119,58 @@ function createSupabaseClient(config: { supabaseUrl: string; supabaseAnonKey: st
   })
 }
 
+function isMissingTableError(error: unknown) {
+  const msg = String((error as ErrorWithMessage | null)?.message || '').toLowerCase()
+  return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
+}
+
+async function runWithTableFallback<T>(
+  tables: string[],
+  operation: (table: string) => QueryResult<T>,
+  entityLabel: string
+): Promise<{ data?: T | null; error: ErrorWithMessage | null }> {
+  let lastResult: { data: T | null; error: ErrorWithMessage | null } | null = null
+
+  for (const table of tables) {
+    const result = await operation(table)
+    if (!result.error) return result
+
+    lastResult = result
+    if (!isMissingTableError(result.error)) {
+      return result
+    }
+  }
+
+  return lastResult?.error
+    ? {
+        ...lastResult,
+        error: {
+          ...lastResult.error,
+          message: `${entityLabel} table is not available. Tried: ${tables.join(', ')}. Set the related table env var or run supabase/schema.sql.`,
+        },
+      }
+    : { data: undefined, error: { message: `No ${entityLabel.toLowerCase()} tables configured` } }
+}
+
+function isAdminUser(user: AuthUserLike) {
+  const userRole = typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : ''
+  const appRole = typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : ''
+  const role = (userRole || appRole).toLowerCase()
+  if (role === 'admin') return true
+
+  const configured = new Set([
+    ...DEFAULT_ADMIN_EMAILS,
+    ...(process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ])
+
+  if (!configured.size) return false
+  const currentEmail = (user.email || '').trim().toLowerCase()
+  return Boolean(currentEmail && configured.has(currentEmail))
+}
+
 async function requireAdmin(req: NextRequest, config: { supabaseUrl: string; supabaseAnonKey: string }) {
   const token = getToken(req)
   if (!token) return null
@@ -71,8 +179,7 @@ async function requireAdmin(req: NextRequest, config: { supabaseUrl: string; sup
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return null
 
-  const role = data.user.user_metadata?.role
-  if (role !== 'admin') return null
+  if (!isAdminUser(data.user)) return null
 
   return { token, user: data.user }
 }
@@ -114,12 +221,21 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const supabase = createSupabaseClient(config, auth.token)
-  const { data, error } = await supabase
-    .from('book_orders')
-    .select('*, books(title)')
-    .order('created_at', { ascending: false })
+  const { data, error } = await runWithTableFallback(
+    ORDER_TABLES,
+    (table) => supabase
+      .from(table)
+      .select('*, books(title)')
+      .order('created_at', { ascending: false }),
+    'Book orders'
+  )
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    if (isMissingTableError(error)) {
+      return NextResponse.json({ orders: [], statuses: ORDER_STATUSES })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json({ orders: ((data || []) as DbOrderRow[]).map(fromDbOrder), statuses: ORDER_STATUSES })
 }
 
@@ -142,21 +258,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Please provide all required delivery details.' }, { status: 400 })
   }
 
-  const { data: book, error: bookError } = await supabase
-    .from('books')
-    .select('id, title, is_published, hard_copy_enabled')
-    .eq('id', bookId)
-    .maybeSingle()
+  const { data: book, error: bookError } = await runWithTableFallback(
+    BOOK_TABLES,
+    (table) => supabase
+      .from(table)
+      .select('id, title, is_published, hard_copy_enabled')
+      .eq('id', bookId)
+      .maybeSingle(),
+    'Books'
+  )
 
-  if (bookError) return NextResponse.json({ error: bookError.message }, { status: 500 })
+  if (bookError) {
+    if (isMissingTableError(bookError)) {
+      return NextResponse.json({ error: 'Book ordering is temporarily unavailable. Please contact support.' }, { status: 503 })
+    }
+    return NextResponse.json({ error: bookError.message }, { status: 500 })
+  }
   if (!book) return NextResponse.json({ error: 'Book not found.' }, { status: 404 })
-  if (!book.is_published || !book.hard_copy_enabled) {
+  const selectedBook = book as { id: string; title: string; is_published: boolean; hard_copy_enabled: boolean }
+  if (!selectedBook.is_published || !selectedBook.hard_copy_enabled) {
     return NextResponse.json({ error: 'This book is not available for hard-copy ordering right now.' }, { status: 400 })
   }
 
   const payload = {
-    book_id: book.id,
-    book_title_snapshot: book.title,
+    book_id: selectedBook.id,
+    book_title_snapshot: selectedBook.title,
     customer_name: customerName,
     phone,
     email,
@@ -168,8 +294,21 @@ export async function POST(req: NextRequest) {
     status: 'Pending' as OrderStatus,
   }
 
-  const { data, error } = await supabase.from('book_orders').insert([payload]).select('*').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { data, error } = await runWithTableFallback(
+    ORDER_TABLES,
+    (table) => supabase.from(table).insert([payload]).select('*').single(),
+    'Book orders'
+  )
+  if (error) {
+    if (isMissingTableError(error)) {
+      return NextResponse.json({ error: 'Book ordering is temporarily unavailable. Please contact support.' }, { status: 503 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
+  }
 
   return NextResponse.json(fromDbOrder(data as DbOrderRow), { status: 201 })
 }
@@ -189,13 +328,18 @@ export async function PUT(req: NextRequest) {
   if (!ORDER_STATUSES.includes(status)) return NextResponse.json({ error: 'Invalid order status' }, { status: 400 })
 
   const supabase = createSupabaseClient(config, auth.token)
-  const { data, error } = await supabase
-    .from('book_orders')
-    .update({ status })
-    .eq('id', id)
-    .select('*, books(title)')
-    .single()
+  const { data, error } = await runWithTableFallback(
+    ORDER_TABLES,
+    (table) => supabase
+      .from(table)
+      .update({ status })
+      .eq('id', id)
+      .select('*, books(title)')
+      .single(),
+    'Book orders'
+  )
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 })
   return NextResponse.json(fromDbOrder(data as DbOrderRow))
 }

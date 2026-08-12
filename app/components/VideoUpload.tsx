@@ -2,12 +2,13 @@
 import React, { useState } from 'react'
 import supabase from '../lib/supabaseClient'
 
-export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
+export default function VideoUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
   const [loading, setLoading] = useState(false)
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
     setLoading(true)
     try {
       const session = await supabase.auth.getSession().then((r) => r.data.session)
@@ -30,6 +31,7 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
         const text = await res.text().catch(() => '')
         return { error: text || 'Upload failed' }
       })
+
       if (!res.ok) {
         alert(payload.error || 'Upload failed')
         return
@@ -46,8 +48,8 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
 
   return (
     <div>
-      <input type="file" accept="image/*" onChange={handle} />
-      {loading && <p>Uploading...</p>}
+      <input type="file" accept="video/*" onChange={handle} />
+      {loading && <p>Uploading video...</p>}
     </div>
   )
 }

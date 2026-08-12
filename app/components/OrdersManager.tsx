@@ -1,7 +1,30 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
 import supabase from '../lib/supabaseClient'
+
+const DEFAULT_ADMIN_EMAILS = ['crownedvictors2019@gmail.com']
+
+function isAdminUser(user: User | null | undefined) {
+  if (!user) return false
+
+  const userRole = typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : ''
+  const appRole = typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : ''
+  const role = (userRole || appRole).toLowerCase()
+  if (role === 'admin') return true
+
+  const configured = new Set([
+    ...DEFAULT_ADMIN_EMAILS,
+    ...(process.env.NEXT_PUBLIC_ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ])
+
+  const email = (user.email || '').trim().toLowerCase()
+  return Boolean(email && configured.has(email))
+}
 
 type OrderItem = {
   id: string
@@ -32,43 +55,46 @@ export default function OrdersManager() {
   const [errorMessage, setErrorMessage] = useState('')
 
   const fetchOrders = async () => {
-    setLoading(true)
-    setErrorMessage('')
+    try {
+      setLoading(true)
+      setErrorMessage('')
 
-    const session = await supabase.auth.getSession().then((result) => result.data.session)
-    if (!session) {
-      setErrorMessage('Sign in to manage customer orders.')
+      const session = await supabase.auth.getSession().then((result) => result.data.session)
+      if (!session) {
+        setErrorMessage('Sign in to manage customer orders.')
+        return
+      }
+
+      if (!isAdminUser(session.user)) {
+        setErrorMessage('Access denied. Admin role is required.')
+        return
+      }
+
+      const response = await fetch('/api/book-orders', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      const payload = (await response.json().catch(() => ({ orders: [], statuses: [] }))) as OrdersResponse
+      if (!response.ok) {
+        setErrorMessage(payload.error || 'Unable to load orders.')
+        return
+      }
+
+      setOrders(Array.isArray(payload.orders) ? payload.orders : [])
+      setStatuses(Array.isArray(payload.statuses) ? payload.statuses : [])
+    } catch {
+      setErrorMessage('Orders portal is unavailable because Supabase is not configured correctly.')
+    } finally {
       setLoading(false)
-      return
     }
-
-    const role = session.user.user_metadata?.role
-    if (role !== 'admin') {
-      setErrorMessage('Access denied. Admin role is required.')
-      setLoading(false)
-      return
-    }
-
-    const response = await fetch('/api/book-orders', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-
-    const payload = (await response.json().catch(() => ({ orders: [], statuses: [] }))) as OrdersResponse
-    if (!response.ok) {
-      setErrorMessage(payload.error || 'Unable to load orders.')
-      setLoading(false)
-      return
-    }
-
-    setOrders(Array.isArray(payload.orders) ? payload.orders : [])
-    setStatuses(Array.isArray(payload.statuses) ? payload.statuses : [])
-    setLoading(false)
   }
 
   useEffect(() => {
-    fetchOrders().catch(() => {
-      setErrorMessage('Unable to load orders.')
-      setLoading(false)
+    queueMicrotask(() => {
+      fetchOrders().catch(() => {
+        setErrorMessage('Unable to load orders.')
+        setLoading(false)
+      })
     })
   }, [])
 

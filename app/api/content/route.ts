@@ -1,6 +1,36 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../lib/supabaseServer'
 
+const DEFAULT_ADMIN_EMAILS = ['crownedvictors2019@gmail.com']
+
+type AuthUserLike = {
+  email?: string | null
+  user_metadata?: Record<string, unknown> | null
+  app_metadata?: Record<string, unknown> | null
+}
+
+function getRole(user: AuthUserLike) {
+  const userRole = typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : ''
+  const appRole = typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : ''
+  return (userRole || appRole).toLowerCase()
+}
+
+function isAllowedAdmin(user: AuthUserLike) {
+  if (getRole(user) === 'admin') return true
+
+  const configured = new Set([
+    ...DEFAULT_ADMIN_EMAILS,
+    ...(process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ])
+
+  if (!configured.size) return false
+  const currentEmail = (user.email || '').trim().toLowerCase()
+  return Boolean(currentEmail && configured.has(currentEmail))
+}
+
 async function getUserFromRequest(req: Request) {
   const auth = req.headers.get('authorization') || ''
   const token = auth.startsWith('Bearer ') ? auth.split(' ')[1] : null
@@ -41,7 +71,7 @@ export async function POST(req: Request) {
   try {
     const adminClient = getAdminClient()
     const user = await getUserFromRequest(req)
-    if (!user || user.user_metadata?.role !== 'admin') {
+    if (!user || !isAllowedAdmin(user)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const body = await req.json()
@@ -57,7 +87,7 @@ export async function PUT(req: Request) {
   try {
     const adminClient = getAdminClient()
     const user = await getUserFromRequest(req)
-    if (!user || user.user_metadata?.role !== 'admin') {
+    if (!user || !isAllowedAdmin(user)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const body = await req.json()
@@ -75,7 +105,7 @@ export async function DELETE(req: Request) {
   try {
     const adminClient = getAdminClient()
     const user = await getUserFromRequest(req)
-    if (!user || user.user_metadata?.role !== 'admin') {
+    if (!user || !isAllowedAdmin(user)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const url = new URL(req.url)

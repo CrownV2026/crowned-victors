@@ -14,6 +14,7 @@ const pages = [
   'books-and-resources',
   'contacts',
   'give-online',
+  'sermons',
   'scripture-banner',
 ]
 
