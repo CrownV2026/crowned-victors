@@ -3,5 +3,5 @@
   "framework": "nextjs",
   "buildCommand": "cd app && npm install && npm run build",
   "outputDirectory": "app/.next",
-  "alias": ["crowned-victors-wc7f-a885hsa0f-crowned-victors.vercel.app"]
+  "alias": ["crownedvictors.org"]
 }
