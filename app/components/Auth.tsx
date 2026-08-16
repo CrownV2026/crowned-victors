@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import supabase, { isSupabaseConfigured } from '../lib/supabaseClient'
+import { getSupabaseConfigDiagnostic } from '../lib/supabaseConfig'
 
 export default function Auth({ onAuth }: { onAuth?: (session: Session | null) => void }) {
   const [email, setEmail] = useState('')
@@ -11,7 +12,7 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      setErrorMessage(getSupabaseConfigDiagnostic() ?? 'Admin portal is unavailable because Supabase is not configured correctly.')
       return
     }
 
@@ -40,7 +41,7 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
 
   const signIn = async () => {
     if (!isSupabaseConfigured()) {
-      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      setErrorMessage(getSupabaseConfigDiagnostic() ?? 'Admin portal is unavailable because Supabase is not configured correctly.')
       return
     }
 

@@ -43,6 +43,34 @@ export function getSupabasePublicConfig(): SupabasePublicConfig | null {
   return { supabaseUrl, supabaseAnonKey }
 }
 
+/**
+ * Returns a human-readable description of which required public Supabase
+ * environment variables are missing or invalid. Returns null when everything
+ * is configured correctly.
+ *
+ * Only references public variable names — never the service-role key.
+ */
+export function getSupabaseConfigDiagnostic(): string | null {
+  const supabaseUrl = getFirstDefinedEnv('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL')
+  const supabaseAnonKey = getFirstDefinedEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY')
+
+  const missing: string[] = []
+
+  if (!isValidHttpUrl(supabaseUrl)) {
+    missing.push('NEXT_PUBLIC_SUPABASE_URL (must be a valid https:// URL)')
+  }
+
+  if (!supabaseAnonKey || supabaseAnonKey.length < 20) {
+    missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+
+  if (missing.length === 0) {
+    return null
+  }
+
+  return `Admin portal is unavailable. The following environment variable${missing.length > 1 ? 's are' : ' is'} missing or invalid in your deployment: ${missing.join(', ')}. Set ${missing.length > 1 ? 'these' : 'this'} in your deployment platform's environment variable settings and redeploy.`
+}
+
 export function getSupabaseServiceConfig(): SupabaseServiceConfig | null {
   const supabaseUrl = getFirstDefinedEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
   const supabaseServiceRoleKey = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY)
