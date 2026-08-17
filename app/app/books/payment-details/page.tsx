@@ -3,16 +3,35 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { BookItem, getBookCurrency, getBookPaymentUrl, getBookPrice, normalizeBook } from '../../../lib/bookPurchase'
+import { BookItem, getBookCurrency, getBookPaymentUrl, getBookPrice, isBookPurchased, markBookPurchased, normalizeBook } from '../../../lib/bookPurchase'
 
 type ContentResponse = {
   books?: BookItem[]
+}
+
+function getPaymentUrlWithMethod(url: string, method: 'mobile_money' | 'visa') {
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+  if (trimmed.includes('{method}')) {
+    return trimmed.replaceAll('{method}', method)
+  }
+
+  try {
+    const next = new URL(trimmed)
+    next.searchParams.set('method', method)
+    return next.toString()
+  } catch {
+    return trimmed
+  }
 }
 
 function PaymentDetailsPageContent() {
   const params = useSearchParams()
   const [books, setBooks] = useState<BookItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [confirmedBySession, setConfirmedBySession] = useState<Record<string, boolean>>({})
+  const [paymentReference, setPaymentReference] = useState('')
+  const [paymentError, setPaymentError] = useState('')
 
   const selectedBookId = params.get('bookId') || ''
 
@@ -53,9 +72,39 @@ function PaymentDetailsPageContent() {
     return null
   }, [books, selectedBookId])
 
+  const selectedBookIndex = useMemo(() => {
+    if (!selectedBook) return -1
+    const byIdIndex = selectedBook.id ? books.findIndex((book) => book.id === selectedBook.id) : -1
+    if (byIdIndex >= 0) return byIdIndex
+    const legacyIndex = Number(selectedBookId)
+    if (Number.isInteger(legacyIndex) && legacyIndex >= 0) return legacyIndex
+    return -1
+  }, [books, selectedBook, selectedBookId])
+
   const bookPrice = selectedBook ? getBookPrice(selectedBook) : 0
   const displayCurrency = selectedBook ? getBookCurrency(selectedBook) : 'USD'
   const paymentUrl = selectedBook ? getBookPaymentUrl(selectedBook) : ''
+  const mobileMoneyPaymentUrl = getPaymentUrlWithMethod(paymentUrl, 'mobile_money')
+  const visaPaymentUrl = getPaymentUrlWithMethod(paymentUrl, 'visa')
+  const paymentStorageKey = selectedBook && selectedBookIndex >= 0
+    ? `${selectedBookIndex}:${selectedBook.title.trim().toLowerCase()}`
+    : ''
+
+  const hasConfirmedPayment = useMemo(() => {
+    if (!selectedBook || selectedBookIndex < 0 || !paymentStorageKey) return false
+    return Boolean(confirmedBySession[paymentStorageKey]) || isBookPurchased(selectedBookIndex, selectedBook.title)
+  }, [confirmedBySession, paymentStorageKey, selectedBook, selectedBookIndex])
+
+  const handleConfirmPayment = () => {
+    if (!selectedBook || selectedBookIndex < 0 || !paymentStorageKey) return
+    if (!paymentReference.trim()) {
+      setPaymentError('Enter your payment reference after completing full payment.')
+      return
+    }
+    markBookPurchased(selectedBookIndex, selectedBook.title)
+    setConfirmedBySession((prev) => ({ ...prev, [paymentStorageKey]: true }))
+    setPaymentError('')
+  }
 
   if (loading) {
     return (
@@ -107,16 +156,62 @@ function PaymentDetailsPageContent() {
         )}
 
         {paymentUrl ? (
-          <a
-            href={paymentUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-5 inline-flex rounded-full bg-[#D4AF37] px-5 py-2 text-sm font-semibold text-[#0B1F3A] hover:bg-[#e0bf4a]"
-          >
-            Buy Online
-          </a>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <a
+              href={mobileMoneyPaymentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex rounded-full bg-[#D4AF37] px-5 py-2 text-sm font-semibold text-[#0B1F3A] hover:bg-[#e0bf4a]"
+            >
+              Buy Online (Mobile Money)
+            </a>
+            <a
+              href={visaPaymentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex rounded-full bg-[#0B1F3A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#17345f]"
+            >
+              Buy Online (Visa)
+            </a>
+          </div>
         ) : (
           <p className="mt-5 text-sm text-[#0B1F3A]/70">No payment link has been configured yet.</p>
+        )}
+
+        {selectedBook.downloadUrl && (
+          <div className="mt-6 rounded-2xl border border-[#D4AF37]/20 bg-white p-4">
+            <p className="text-sm font-semibold text-[#0B1F3A]">Digital download access</p>
+            {hasConfirmedPayment ? (
+              <a
+                href={selectedBook.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex rounded-full bg-[#0B1F3A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#17345f]"
+              >
+                Download Book
+              </a>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-[#0B1F3A]/75">
+                  Download unlocks only after full payment. Complete payment via Mobile Money or Visa, then enter your payment reference.
+                </p>
+                <input
+                  value={paymentReference}
+                  onChange={(event) => setPaymentReference(event.target.value)}
+                  placeholder="Payment reference / transaction ID"
+                  className="mt-3 w-full rounded-xl border border-[#D4AF37]/30 px-3 py-2 text-sm text-[#0B1F3A] outline-none focus:border-[#D4AF37]"
+                />
+                <button
+                  type="button"
+                  onClick={handleConfirmPayment}
+                  className="mt-3 inline-flex rounded-full border border-[#D4AF37] px-5 py-2 text-sm font-semibold text-[#0B1F3A] hover:bg-[#f7efd4]"
+                >
+                  I have completed full payment
+                </button>
+                {paymentError && <p className="mt-2 text-sm text-[#B42318]">{paymentError}</p>}
+              </>
+            )}
+          </div>
         )}
 
         <div className="mt-6">

@@ -582,9 +582,28 @@ export default function EditorClient({ slug }: { slug: string }) {
               <label>ISBN (optional)<input value={book.isbn || ''} onChange={(e) => setBook(index, 'isbn', e.target.value)} style={fieldStyle} /></label>
               <label>Published date (optional)<input type="date" value={book.publishedDate || ''} onChange={(e) => setBook(index, 'publishedDate', e.target.value)} style={fieldStyle} /></label>
 
-              <label>Online payment provider name<input value={book.paymentProviderName || ''} onChange={(e) => setBook(index, 'paymentProviderName', e.target.value)} style={fieldStyle} /></label>
+              <label>
+                Online payment provider name
+                <input
+                  list={`payment-provider-options-${index}`}
+                  value={book.paymentProviderName || ''}
+                  onChange={(e) => setBook(index, 'paymentProviderName', e.target.value)}
+                  placeholder="Mobile Money / Visa"
+                  style={fieldStyle}
+                />
+                <datalist id={`payment-provider-options-${index}`}>
+                  <option value="Mobile Money / Visa" />
+                  <option value="Flutterwave (Mobile Money / Visa)" />
+                  <option value="Paystack (Mobile Money / Visa)" />
+                  <option value="Stripe (Visa)" />
+                </datalist>
+              </label>
               <label>Online payment URL<input value={book.paymentUrl || ''} onChange={(e) => setBook(index, 'paymentUrl', e.target.value)} style={fieldStyle} /></label>
               <label>Online payment instructions<textarea value={book.paymentInstructions || ''} onChange={(e) => setBook(index, 'paymentInstructions', e.target.value)} rows={3} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+              <div style={{ marginBottom: 8 }}>
+                <label>Upload digital book file (PDF/ePub)</label>
+                <ImageUpload accept=".pdf,.epub,.mobi,application/pdf,application/epub+zip" onUploaded={(url) => setBook(index, 'downloadUrl', url)} />
+              </div>
               <label>Digital download URL (optional)<input value={book.downloadUrl || ''} onChange={(e) => setBook(index, 'downloadUrl', e.target.value)} style={fieldStyle} /></label>
 
               <label>Delivery/contact link<input value={book.deliveryContactLink || ''} onChange={(e) => setBook(index, 'deliveryContactLink', e.target.value)} style={fieldStyle} /></label>

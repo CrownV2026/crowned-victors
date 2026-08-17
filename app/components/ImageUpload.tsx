@@ -2,7 +2,12 @@
 import React, { useState } from 'react'
 import supabase from '../lib/supabaseClient'
 
-export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
+type ImageUploadProps = {
+  onUploaded: (url: string) => void
+  accept?: string
+}
+
+export default function ImageUpload({ onUploaded, accept = 'image/*' }: ImageUploadProps) {
   const [loading, setLoading] = useState(false)
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,7 +51,7 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
 
   return (
     <div>
-      <input type="file" accept="image/*" onChange={handle} />
+      <input type="file" accept={accept} onChange={handle} />
       {loading && <p>Uploading...</p>}
     </div>
   )
