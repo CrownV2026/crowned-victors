@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { BookItem, getBookCurrency, getBookPaymentUrl, getBookPrice, isBookPurchased, markBookPurchased, normalizeBook } from '../../../lib/bookPurchase'
+import { BookItem, getBookCurrency, getBookPaymentUrl, getBookPrice, normalizeBook } from '../../../lib/bookPurchase'
 
 type ContentResponse = {
   books?: BookItem[]
@@ -16,20 +16,17 @@ function getPaymentUrlWithMethod(url: string, method: 'mobile_money' | 'visa') {
     return trimmed.replaceAll('{method}', method)
   }
 
-  try {
-    const next = new URL(trimmed)
-    next.searchParams.set('method', method)
-    return next.toString()
-  } catch {
-    return trimmed
-  }
+  const joiner = trimmed.includes('?') ? '&' : '?'
+  return `${trimmed}${joiner}method=${method}`
 }
 
 function PaymentDetailsPageContent() {
   const params = useSearchParams()
   const [books, setBooks] = useState<BookItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [confirmedBySession, setConfirmedBySession] = useState<Record<string, boolean>>({})
+  const [downloadUrl, setDownloadUrl] = useState('')
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'mobile_money' | 'visa'>('mobile_money')
+  const [unlockingDownload, setUnlockingDownload] = useState(false)
   const [paymentReference, setPaymentReference] = useState('')
   const [paymentError, setPaymentError] = useState('')
 
@@ -72,38 +69,47 @@ function PaymentDetailsPageContent() {
     return null
   }, [books, selectedBookId])
 
-  const selectedBookIndex = useMemo(() => {
-    if (!selectedBook) return -1
-    const byIdIndex = selectedBook.id ? books.findIndex((book) => book.id === selectedBook.id) : -1
-    if (byIdIndex >= 0) return byIdIndex
-    const legacyIndex = Number(selectedBookId)
-    if (Number.isInteger(legacyIndex) && legacyIndex >= 0) return legacyIndex
-    return -1
-  }, [books, selectedBook, selectedBookId])
-
   const bookPrice = selectedBook ? getBookPrice(selectedBook) : 0
   const displayCurrency = selectedBook ? getBookCurrency(selectedBook) : 'USD'
   const paymentUrl = selectedBook ? getBookPaymentUrl(selectedBook) : ''
   const mobileMoneyPaymentUrl = getPaymentUrlWithMethod(paymentUrl, 'mobile_money')
   const visaPaymentUrl = getPaymentUrlWithMethod(paymentUrl, 'visa')
-  const paymentStorageKey = selectedBook && selectedBookIndex >= 0
-    ? `${selectedBookIndex}:${selectedBook.title.trim().toLowerCase()}`
-    : ''
 
-  const hasConfirmedPayment = useMemo(() => {
-    if (!selectedBook || selectedBookIndex < 0 || !paymentStorageKey) return false
-    return Boolean(confirmedBySession[paymentStorageKey]) || isBookPurchased(selectedBookIndex, selectedBook.title)
-  }, [confirmedBySession, paymentStorageKey, selectedBook, selectedBookIndex])
-
-  const handleConfirmPayment = () => {
-    if (!selectedBook || selectedBookIndex < 0 || !paymentStorageKey) return
+  const handleUnlockDownload = async () => {
+    if (!selectedBook?.id) {
+      setPaymentError('This book cannot be unlocked yet. Please contact support.')
+      return
+    }
     if (!paymentReference.trim()) {
       setPaymentError('Enter your payment reference after completing full payment.')
       return
     }
-    markBookPurchased(selectedBookIndex, selectedBook.title)
-    setConfirmedBySession((prev) => ({ ...prev, [paymentStorageKey]: true }))
+    setUnlockingDownload(true)
     setPaymentError('')
+
+    try {
+      const response = await fetch('/api/books/download-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookId: selectedBook.id,
+          paymentMethod: selectedPaymentMethod,
+          paymentReference: paymentReference.trim(),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({ error: 'Unable to unlock download.' })) as { downloadUrl?: string; error?: string }
+      if (!response.ok || !payload.downloadUrl) {
+        setPaymentError(payload.error || 'Payment could not be verified yet. Please try again.')
+        return
+      }
+
+      setDownloadUrl(payload.downloadUrl)
+    } catch {
+      setPaymentError('Unable to verify payment right now. Please try again shortly.')
+    } finally {
+      setUnlockingDownload(false)
+    }
   }
 
   if (loading) {
@@ -178,12 +184,12 @@ function PaymentDetailsPageContent() {
           <p className="mt-5 text-sm text-[#0B1F3A]/70">No payment link has been configured yet.</p>
         )}
 
-        {selectedBook.downloadUrl && (
+        {(selectedBook.hasDownloadUrl || selectedBook.downloadUrl) && (
           <div className="mt-6 rounded-2xl border border-[#D4AF37]/20 bg-white p-4">
             <p className="text-sm font-semibold text-[#0B1F3A]">Digital download access</p>
-            {hasConfirmedPayment ? (
+            {downloadUrl ? (
               <a
-                href={selectedBook.downloadUrl}
+                href={downloadUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-3 inline-flex rounded-full bg-[#0B1F3A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#17345f]"
@@ -201,12 +207,27 @@ function PaymentDetailsPageContent() {
                   placeholder="Payment reference / transaction ID"
                   className="mt-3 w-full rounded-xl border border-[#D4AF37]/30 px-3 py-2 text-sm text-[#0B1F3A] outline-none focus:border-[#D4AF37]"
                 />
+                <label className="mt-3 block text-sm text-[#0B1F3A]/80">
+                  Payment method used
+                  <select
+                    value={selectedPaymentMethod}
+                    onChange={(event) => setSelectedPaymentMethod(event.target.value === 'visa' ? 'visa' : 'mobile_money')}
+                    className="mt-1 w-full rounded-xl border border-[#D4AF37]/30 px-3 py-2 text-sm text-[#0B1F3A] outline-none focus:border-[#D4AF37]"
+                  >
+                    <option value="mobile_money">Mobile Money</option>
+                    <option value="visa">Visa</option>
+                  </select>
+                </label>
+                <p className="mt-2 text-xs text-[#0B1F3A]/65">
+                  Verification checks your {selectedPaymentMethod === 'visa' ? 'Visa' : 'Mobile Money'} payment before unlocking the file.
+                </p>
                 <button
                   type="button"
-                  onClick={handleConfirmPayment}
+                  onClick={handleUnlockDownload}
+                  disabled={unlockingDownload}
                   className="mt-3 inline-flex rounded-full border border-[#D4AF37] px-5 py-2 text-sm font-semibold text-[#0B1F3A] hover:bg-[#f7efd4]"
                 >
-                  I have completed full payment
+                  {unlockingDownload ? 'Verifying payment...' : 'Verify payment & unlock download'}
                 </button>
                 {paymentError && <p className="mt-2 text-sm text-[#B42318]">{paymentError}</p>}
               </>

@@ -204,7 +204,8 @@ function toDbBook(payload: BookPayload) {
   }
 }
 
-function fromDbBook(row: DbBookRow) {
+function fromDbBook(row: DbBookRow, options?: { includeDownloadUrl?: boolean }) {
+  const includeDownloadUrl = options?.includeDownloadUrl ?? true
   return {
     id: row.id,
     title: row.title,
@@ -224,7 +225,8 @@ function fromDbBook(row: DbBookRow) {
     paymentProviderName: row.payment_provider_name || '',
     paymentUrl: row.payment_url || '',
     paymentInstructions: row.payment_instructions || '',
-    downloadUrl: row.download_url || '',
+    hasDownloadUrl: Boolean(row.download_url),
+    downloadUrl: includeDownloadUrl ? (row.download_url || '') : '',
     deliveryContactLink: row.delivery_contact_link || '',
     deliveryInstructions: row.delivery_instructions || '',
     sortOrder: row.sort_order || 0,
@@ -257,7 +259,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const books = ((data || []) as DbBookRow[]).map(fromDbBook)
+  const books = ((data || []) as DbBookRow[]).map((row) => fromDbBook(row, { includeDownloadUrl: includeAll && Boolean(auth) }))
   return NextResponse.json({ books })
 }
 
@@ -282,7 +284,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
 
-  return NextResponse.json(fromDbBook(data as DbBookRow))
+  return NextResponse.json(fromDbBook(data as DbBookRow, { includeDownloadUrl: true }))
 }
 
 export async function PUT(req: NextRequest) {
@@ -319,7 +321,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ books: saved.map(fromDbBook) })
+    return NextResponse.json({ books: saved.map((row) => fromDbBook(row, { includeDownloadUrl: true })) })
   }
 
   const single = body as BookPayload
@@ -334,7 +336,7 @@ export async function PUT(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Failed to update book' }, { status: 500 })
 
-  return NextResponse.json(fromDbBook(data as DbBookRow))
+  return NextResponse.json(fromDbBook(data as DbBookRow, { includeDownloadUrl: true }))
 }
 
 export async function DELETE(req: NextRequest) {
