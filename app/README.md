@@ -72,9 +72,13 @@ create policy "Admins can manage content" on content
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_STORAGE_BUCKET=images
+SUPABASE_BOOKS_STORAGE_BUCKET=books
 ```
 
-2. Ensure the Supabase storage bucket `images` exists and is configured to allow public URLs (or adjust upload/getPublicUrl usage accordingly).
+2. Ensure the Supabase storage buckets used by the app exist and are configured to allow public URLs (or adjust upload/getPublicUrl usage accordingly). By default the uploader tries:
+   - Images/videos: `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET`, `images`, `Images`
+   - Book files (PDF/ePub/etc.): `SUPABASE_BOOKS_STORAGE_BUCKET`, `NEXT_PUBLIC_SUPABASE_BOOKS_STORAGE_BUCKET`, `books`, `book-files`
 
 3. Deploy normally; server-side APIs will run on Vercel and use the `SUPABASE_SERVICE_ROLE_KEY` stored in Vercel secrets.
 

@@ -2,20 +2,40 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
 
-const RAW_BUCKETS = [
+const RAW_IMAGE_BUCKETS = [
   process.env.SUPABASE_STORAGE_BUCKET,
   process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET,
   'images',
   'Images',
 ]
 
-const BUCKET_CANDIDATES = RAW_BUCKETS
-  .filter(Boolean)
-  .map((name) => String(name).trim())
-  .filter((name, idx, arr) => Boolean(name) && arr.indexOf(name) === idx)
+const RAW_BOOK_BUCKETS = [
+  process.env.SUPABASE_BOOKS_STORAGE_BUCKET,
+  process.env.NEXT_PUBLIC_SUPABASE_BOOKS_STORAGE_BUCKET,
+  'books',
+  'book-files',
+]
+
+function toBucketCandidates(values: Array<string | undefined>) {
+  return values
+    .filter(Boolean)
+    .map((name) => String(name).trim())
+    .filter((name, idx, arr) => Boolean(name) && arr.indexOf(name) === idx)
+}
+
+const IMAGE_BUCKET_CANDIDATES = toBucketCandidates(RAW_IMAGE_BUCKETS)
+const BOOK_BUCKET_CANDIDATES = toBucketCandidates(RAW_BOOK_BUCKETS)
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function getBucketCandidatesForFile(file: File) {
+  const isImage = (file.type || '').toLowerCase().startsWith('image/')
+  if (isImage) return IMAGE_BUCKET_CANDIDATES
+
+  const merged = [...BOOK_BUCKET_CANDIDATES, ...IMAGE_BUCKET_CANDIDATES]
+  return merged.filter((name, idx, arr) => arr.indexOf(name) === idx)
 }
 
 function isBucketNotFoundError(message: string) {
@@ -72,10 +92,12 @@ export async function POST(req: NextRequest) {
       global: { headers: { Authorization: `Bearer ${token}` } },
     })
 
+    const bucketCandidates = getBucketCandidatesForFile(file)
+
     let selectedBucket: string | null = null
     let lastUploadError: Error | null = null
 
-    for (const bucket of BUCKET_CANDIDATES) {
+    for (const bucket of bucketCandidates) {
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(path, file, {
@@ -97,9 +119,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (!selectedBucket) {
-      const attemptedBuckets = BUCKET_CANDIDATES.join(', ')
+      const attemptedBuckets = bucketCandidates.join(', ')
       const baseError = lastUploadError?.message || 'Bucket not found'
-      const guidance = `Set SUPABASE_STORAGE_BUCKET (or NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET) to an existing Supabase Storage bucket. Attempted: ${attemptedBuckets}`
+      const guidance = `Set SUPABASE_BOOKS_STORAGE_BUCKET/NEXT_PUBLIC_SUPABASE_BOOKS_STORAGE_BUCKET for book files (or SUPABASE_STORAGE_BUCKET/NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET for images). Attempted: ${attemptedBuckets}`
       return NextResponse.json({ error: `${baseError}. ${guidance}` }, { status: 500 })
     }
 
