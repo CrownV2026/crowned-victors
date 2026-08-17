@@ -9,23 +9,22 @@ export type SupabaseServiceConfig = {
 }
 
 function normalizeEnvValue(value: string | undefined | null) {
-  return typeof value === 'string' ? value.trim() : ''
-}
+  if (typeof value !== 'string') return ''
 
-function getFirstDefinedEnv(...keys: string[]) {
-  for (const key of keys) {
-    const value = normalizeEnvValue(process.env[key])
-    if (value) return value
+  const trimmed = value.trim()
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1).trim()
   }
 
-  return ''
+  return trimmed
 }
 
 export function isValidHttpUrl(value: string) {
-  if (!value) return false
+  const normalized = normalizeEnvValue(value)
+  if (!normalized) return false
 
   try {
-    const parsedUrl = new URL(value)
+    const parsedUrl = new URL(normalized)
     return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:'
   } catch {
     return false
@@ -33,8 +32,12 @@ export function isValidHttpUrl(value: string) {
 }
 
 export function getSupabasePublicConfig(): SupabasePublicConfig | null {
-  const supabaseUrl = getFirstDefinedEnv('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL')
-  const supabaseAnonKey = getFirstDefinedEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY')
+  const supabaseUrl = normalizeEnvValue(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  )
+  const supabaseAnonKey = normalizeEnvValue(
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+  )
 
   if (!isValidHttpUrl(supabaseUrl) || !supabaseAnonKey) {
     return null
@@ -44,7 +47,9 @@ export function getSupabasePublicConfig(): SupabasePublicConfig | null {
 }
 
 export function getSupabaseServiceConfig(): SupabaseServiceConfig | null {
-  const supabaseUrl = getFirstDefinedEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
+  const supabaseUrl = normalizeEnvValue(
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  )
   const supabaseServiceRoleKey = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY)
 
   if (!isValidHttpUrl(supabaseUrl) || !supabaseServiceRoleKey) {
