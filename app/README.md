@@ -74,6 +74,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_STORAGE_BUCKET=images
 SUPABASE_BOOKS_STORAGE_BUCKET=books
+BOOK_PAYMENT_VERIFICATION_URL=https://your-api.example.com/book-payment/verify
+BOOK_PAYMENT_VERIFICATION_TOKEN=your-shared-verification-token
+BOOK_DOWNLOAD_TOKEN_SECRET=replace-with-a-long-random-secret
 ```
 
 2. Ensure the Supabase storage buckets used by the app exist and are configured to allow public URLs (or adjust upload/getPublicUrl usage accordingly). By default the uploader tries:
@@ -81,6 +84,13 @@ SUPABASE_BOOKS_STORAGE_BUCKET=books
    - Book files (PDF/ePub/etc.): `SUPABASE_BOOKS_STORAGE_BUCKET`, `NEXT_PUBLIC_SUPABASE_BOOKS_STORAGE_BUCKET`, `books`, `book-files`
 
 3. Deploy normally; server-side APIs will run on Vercel and use the `SUPABASE_SERVICE_ROLE_KEY` stored in Vercel secrets.
+
+### Book payment & download URLs
+
+- Set each book's `Online payment URL` in the admin editor.
+- `BOOK_PAYMENT_VERIFICATION_URL` must point to your backend endpoint that verifies a payment reference and returns whether payment is confirmed.
+- After successful verification, the app returns a secure download route (`/api/books/download-file?token=...`) for the book file.
+- Keep `BOOK_DOWNLOAD_TOKEN_SECRET` private and rotate it if compromised.
 
 Notes:
 
