@@ -43,11 +43,7 @@ function isBucketNotFoundError(message: string) {
   return normalized.includes('bucket not found') || normalized.includes('not found') && normalized.includes('bucket')
 }
 
-function getTokenFromRequest(req: NextRequest, accessTokenFromBody?: unknown) {
-  if (typeof accessTokenFromBody === 'string' && accessTokenFromBody.trim()) {
-    return accessTokenFromBody.trim()
-  }
-
+function getTokenFromRequest(req: NextRequest) {
   const auth = req.headers.get('authorization') || ''
   const headerToken = auth.startsWith('Bearer ') ? auth.split(' ')[1] : null
   const cookieToken = req.cookies.get('sb-access-token')?.value || null
@@ -83,7 +79,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => null)
-    const token = getTokenFromRequest(req, body?.accessToken)
+    const token = getTokenFromRequest(req)
     const user = await getUserFromToken(token)
 
     if (!user) {
@@ -120,11 +116,11 @@ export async function POST(req: NextRequest) {
         break
       }
 
-      lastUploadError = uploadError || new Error('Could not generate signed upload URL')
-
       if (!uploadError) {
-        continue
+        return NextResponse.json({ error: 'Could not generate signed upload URL' }, { status: 500 })
       }
+
+      lastUploadError = uploadError
 
       if (!isBucketNotFoundError(uploadError.message || '')) {
         return NextResponse.json({ error: uploadError.message }, { status: 500 })

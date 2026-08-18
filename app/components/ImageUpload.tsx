@@ -24,13 +24,13 @@ export default function ImageUpload({ onUploaded, accept = 'image/*' }: ImageUpl
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: {
+          Authorization: 'Bearer ' + session.access_token,
           'Content-Type': 'application/json',
         },
         credentials: 'include',
         body: JSON.stringify({
           fileName: file.name,
           fileType: file.type,
-          accessToken: session.access_token,
         }),
       })
 
