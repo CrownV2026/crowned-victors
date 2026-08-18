@@ -419,6 +419,7 @@ export default function EditorClient({ slug }: { slug: string }) {
   const isGiveOnlineEditor = slug === 'give-online'
   const isGalleryEditor = slug === 'gallery'
   const isSermonsEditor = slug === 'sermons'
+  const isBooksEditor = slug === 'books-and-resources'
   const isHomeEditor = slug === 'home'
 
   return (
@@ -515,6 +516,96 @@ export default function EditorClient({ slug }: { slug: string }) {
             Add Sermon
           </button>
         </>
+      ) : isBooksEditor ? (
+        <>
+          <p style={sectionHead}>Book Store</p>
+          <p style={{ margin: '8px 0 12px', color: '#374151', fontSize: 14 }}>
+            Add a book entry first, then upload the digital document file (PDF/ePub/mobi) inside that book card.
+          </p>
+          {input('Book section heading', 'booksSectionHeading', 'Book Store')}
+          {textarea('Book section description', 'booksSectionDescription', 3, 'Buy soft copies online or order hard copies for delivery.')}
+
+          <button type="button" onClick={addBook} style={{ border: '1px solid #0b2340', background: '#fff', color: '#0b2340', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 12 }}>
+            Add Book
+          </button>
+
+          {books.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+              No books yet. Click &quot;Add Book&quot; to reveal the upload field.
+            </p>
+          ) : null}
+
+          {books.map((book, index) => (
+            <div key={`${book.id || 'new'}-${index}`} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <p style={{ fontWeight: 700, marginBottom: 10 }}>Book {index + 1}</p>
+              <div style={{ marginBottom: 8 }}>
+                <label>Book Cover Image</label>
+                <ImageUpload onUploaded={(url) => setBook(index, 'coverImageUrl', url)} />
+                {book.coverImageUrl ? <Image src={book.coverImageUrl} alt="book cover" width={360} height={540} unoptimized style={{ maxWidth: 180, marginTop: 8, borderRadius: 6, height: 'auto' }} /> : null}
+              </div>
+              <label>Book title<input value={book.title || ''} onChange={(e) => setBook(index, 'title', e.target.value)} style={fieldStyle} /></label>
+              <label>Author<input value={book.author || ''} onChange={(e) => setBook(index, 'author', e.target.value)} style={fieldStyle} /></label>
+              <label>Short description<textarea value={book.description || ''} onChange={(e) => setBook(index, 'description', e.target.value)} rows={2} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+              <label>Full description<textarea value={book.fullDescription || ''} onChange={(e) => setBook(index, 'fullDescription', e.target.value)} rows={4} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+              <label>Price<input type="number" min="0" step="0.01" value={typeof book.price === 'number' ? String(book.price) : book.price || ''} onChange={(e) => setBook(index, 'price', e.target.value)} style={fieldStyle} /></label>
+              <label>Currency<input value={book.currency || 'USD'} onChange={(e) => setBook(index, 'currency', e.target.value)} style={fieldStyle} /></label>
+              <label>Availability / status<input value={book.status || ''} onChange={(e) => setBook(index, 'status', e.target.value)} placeholder="Available, Coming Soon, etc." style={fieldStyle} /></label>
+              <label>ISBN (optional)<input value={book.isbn || ''} onChange={(e) => setBook(index, 'isbn', e.target.value)} style={fieldStyle} /></label>
+              <label>Published date (optional)<input type="date" value={book.publishedDate || ''} onChange={(e) => setBook(index, 'publishedDate', e.target.value)} style={fieldStyle} /></label>
+
+              <label>
+                Online payment provider name
+                <input
+                  list={`payment-provider-options-${index}`}
+                  value={book.paymentProviderName || ''}
+                  onChange={(e) => setBook(index, 'paymentProviderName', e.target.value)}
+                  placeholder="Mobile Money / Visa"
+                  style={fieldStyle}
+                />
+                <datalist id={`payment-provider-options-${index}`}>
+                  <option value="Mobile Money / Visa" />
+                  <option value="Flutterwave (Mobile Money / Visa)" />
+                  <option value="Paystack (Mobile Money / Visa)" />
+                  <option value="Stripe (Visa)" />
+                </datalist>
+              </label>
+              <label>Online payment URL<input value={book.paymentUrl || ''} onChange={(e) => setBook(index, 'paymentUrl', e.target.value)} style={fieldStyle} /></label>
+              <label>Online payment instructions<textarea value={book.paymentInstructions || ''} onChange={(e) => setBook(index, 'paymentInstructions', e.target.value)} rows={3} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+              <div style={{ marginBottom: 8 }}>
+                <label>Upload digital book file (PDF/ePub/mobi)</label>
+                <ImageUpload accept=".pdf,.epub,.mobi,application/pdf,application/epub+zip" onUploaded={(url) => setBook(index, 'downloadUrl', url)} />
+              </div>
+              <label>Digital download URL (optional)<input value={book.downloadUrl || ''} onChange={(e) => setBook(index, 'downloadUrl', e.target.value)} style={fieldStyle} /></label>
+
+              <label>Delivery/contact link<input value={book.deliveryContactLink || ''} onChange={(e) => setBook(index, 'deliveryContactLink', e.target.value)} style={fieldStyle} /></label>
+              <label>Delivery/order instructions<textarea value={book.deliveryInstructions || ''} onChange={(e) => setBook(index, 'deliveryInstructions', e.target.value)} rows={3} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+
+              <label>Buy Online button label<input value={book.buyLabel || 'Buy Online'} onChange={(e) => setBook(index, 'buyLabel', e.target.value)} style={fieldStyle} /></label>
+              <label>Purchase Hard Copy button label<input value={book.orderLabel || 'Purchase Hard Copy'} onChange={(e) => setBook(index, 'orderLabel', e.target.value)} style={fieldStyle} /></label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <input type="checkbox" checked={Boolean(book.isPublished)} onChange={(e) => setBook(index, 'isPublished', e.target.checked)} />
+                Published
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <input type="checkbox" checked={Boolean(book.onlinePurchaseEnabled)} onChange={(e) => setBook(index, 'onlinePurchaseEnabled', e.target.checked)} />
+                Available for online purchase
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <input type="checkbox" checked={Boolean(book.hardCopyEnabled)} onChange={(e) => setBook(index, 'hardCopyEnabled', e.target.checked)} />
+                Available for hard-copy purchase
+              </label>
+
+              <button type="button" onClick={() => removeBook(index)} style={{ marginTop: 10, border: '1px solid #dc2626', color: '#dc2626', background: 'transparent', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+                Remove book
+              </button>
+            </div>
+          ))}
+
+          <button type="button" onClick={addBook} style={{ border: '1px solid #0b2340', background: '#fff', color: '#0b2340', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+            Add Book
+          </button>
+        </>
       ) : (
         <>
           <p style={sectionHead}>Hero</p>
@@ -601,7 +692,7 @@ export default function EditorClient({ slug }: { slug: string }) {
               <label>Online payment URL<input value={book.paymentUrl || ''} onChange={(e) => setBook(index, 'paymentUrl', e.target.value)} style={fieldStyle} /></label>
               <label>Online payment instructions<textarea value={book.paymentInstructions || ''} onChange={(e) => setBook(index, 'paymentInstructions', e.target.value)} rows={3} style={{ ...fieldStyle, resize: 'vertical' }} /></label>
               <div style={{ marginBottom: 8 }}>
-                <label>Upload digital book file (PDF/ePub)</label>
+                <label>Upload digital book file (PDF/ePub/mobi)</label>
                 <ImageUpload accept=".pdf,.epub,.mobi,application/pdf,application/epub+zip" onUploaded={(url) => setBook(index, 'downloadUrl', url)} />
               </div>
               <label>Digital download URL (optional)<input value={book.downloadUrl || ''} onChange={(e) => setBook(index, 'downloadUrl', e.target.value)} style={fieldStyle} /></label>
