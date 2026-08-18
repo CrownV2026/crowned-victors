@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getSupabasePublicConfig } from '../../../lib/supabaseConfig'
+import { getSupabasePublicConfig, getSupabaseServiceConfig } from '../../../lib/supabaseConfig'
 
 const RAW_IMAGE_BUCKETS = [
   process.env.SUPABASE_STORAGE_BUCKET,
@@ -30,8 +30,8 @@ function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
-function getBucketCandidatesForFile(file: File) {
-  const isImage = (file.type || '').toLowerCase().startsWith('image/')
+function getBucketCandidatesForFileType(fileType: string) {
+  const isImage = fileType.toLowerCase().startsWith('image/')
   if (isImage) return IMAGE_BUCKET_CANDIDATES
 
   const merged = [...BOOK_BUCKET_CANDIDATES, ...IMAGE_BUCKET_CANDIDATES]
@@ -55,64 +55,67 @@ async function getUserFromRequest(req: NextRequest) {
 
   const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
   })
 
   const { data, error } = await supabase.auth.getUser(token)
   if (error) return null
-  return { user: data.user, token }
+  return data.user
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const config = getSupabasePublicConfig()
-    if (!config) {
+    const publicConfig = getSupabasePublicConfig()
+    const serviceConfig = getSupabaseServiceConfig()
+
+    if (!publicConfig) {
       return NextResponse.json({ error: 'Missing Supabase URL or anon key' }, { status: 500 })
     }
 
-    const authResult = await getUserFromRequest(req)
-    if (!authResult) {
+    if (!serviceConfig) {
+      return NextResponse.json({ error: 'Missing Supabase service role key' }, { status: 500 })
+    }
+
+    const user = await getUserFromRequest(req)
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { user, token } = authResult
+    const body = await req.json().catch(() => null)
+    const fileName = typeof body?.fileName === 'string' && body.fileName.trim() ? body.fileName.trim() : 'upload.bin'
+    const fileType = typeof body?.fileType === 'string' && body.fileType.trim()
+      ? body.fileType.trim().toLowerCase()
+      : 'application/octet-stream'
 
-    const formData = await req.formData()
-    const file = formData.get('file')
-
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: 'Missing file' }, { status: 400 })
-    }
-
-    const safeName = sanitizeFileName(file.name || 'upload.bin')
+    const safeName = sanitizeFileName(fileName)
     const path = `${user.id}/${Date.now()}-${safeName}`
 
-    const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    const supabaseAdmin = createClient(serviceConfig.supabaseUrl, serviceConfig.supabaseServiceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers: { Authorization: `Bearer ${token}` } },
     })
 
-    const bucketCandidates = getBucketCandidatesForFile(file)
+    const bucketCandidates = getBucketCandidatesForFileType(fileType)
 
     let selectedBucket: string | null = null
+    let uploadToken: string | null = null
     let lastUploadError: Error | null = null
 
     for (const bucket of bucketCandidates) {
-      const { error: uploadError } = await supabase.storage
+      const { data, error: uploadError } = await supabaseAdmin.storage
         .from(bucket)
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        .createSignedUploadUrl(path, { upsert: false })
 
-      if (!uploadError) {
+      if (!uploadError && data?.token) {
         selectedBucket = bucket
+        uploadToken = data.token
         lastUploadError = null
         break
       }
 
-      lastUploadError = uploadError
+      lastUploadError = uploadError || new Error('Could not generate signed upload URL')
+      if (!uploadError) {
+        continue
+      }
+
       if (!isBucketNotFoundError(uploadError.message || '')) {
         return NextResponse.json({ error: uploadError.message }, { status: 500 })
       }
@@ -125,9 +128,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${baseError}. ${guidance}` }, { status: 500 })
     }
 
-    const { data: urlData } = supabase.storage.from(selectedBucket).getPublicUrl(path)
+    if (!uploadToken) {
+      return NextResponse.json({ error: 'Could not generate signed upload URL' }, { status: 500 })
+    }
 
-    return NextResponse.json({ path, url: urlData.publicUrl, bucket: selectedBucket })
+    const { data: urlData } = supabaseAdmin.storage.from(selectedBucket).getPublicUrl(path)
+
+    return NextResponse.json({ path, url: urlData.publicUrl, bucket: selectedBucket, token: uploadToken })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Upload failed'
     return NextResponse.json({ error: message }, { status: 500 })
