@@ -43,11 +43,18 @@ function isBucketNotFoundError(message: string) {
   return normalized.includes('bucket not found') || normalized.includes('not found') && normalized.includes('bucket')
 }
 
-async function getUserFromRequest(req: NextRequest) {
+function getTokenFromRequest(req: NextRequest, accessTokenFromBody?: unknown) {
+  if (typeof accessTokenFromBody === 'string' && accessTokenFromBody.trim()) {
+    return accessTokenFromBody.trim()
+  }
+
   const auth = req.headers.get('authorization') || ''
   const headerToken = auth.startsWith('Bearer ') ? auth.split(' ')[1] : null
   const cookieToken = req.cookies.get('sb-access-token')?.value || null
-  const token = headerToken || cookieToken
+  return headerToken || cookieToken
+}
+
+async function getUserFromToken(token: string | null) {
   if (!token) return null
 
   const config = getSupabasePublicConfig()
@@ -58,7 +65,7 @@ async function getUserFromRequest(req: NextRequest) {
   })
 
   const { data, error } = await supabase.auth.getUser(token)
-  if (error) return null
+  if (error || !data.user) return null
   return data.user
 }
 
@@ -75,12 +82,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing Supabase service role key' }, { status: 500 })
     }
 
-    const user = await getUserFromRequest(req)
+    const body = await req.json().catch(() => null)
+    const token = getTokenFromRequest(req, body?.accessToken)
+    const user = await getUserFromToken(token)
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json().catch(() => null)
     const fileName = typeof body?.fileName === 'string' && body.fileName.trim() ? body.fileName.trim() : 'upload.bin'
     const fileType = typeof body?.fileType === 'string' && body.fileType.trim()
       ? body.fileType.trim().toLowerCase()
@@ -112,6 +121,7 @@ export async function POST(req: NextRequest) {
       }
 
       lastUploadError = uploadError || new Error('Could not generate signed upload URL')
+
       if (!uploadError) {
         continue
       }
