@@ -2,7 +2,12 @@
 import React, { useState } from 'react'
 import supabase from '../lib/supabaseClient'
 
-export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
+type ImageUploadProps = {
+  onUploaded: (url: string) => void
+  accept?: string
+}
+
+export default function ImageUpload({ onUploaded, accept = 'image/*' }: ImageUploadProps) {
   const [loading, setLoading] = useState(false)
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -16,14 +21,17 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
         return
       }
 
-      const formData = new FormData()
-      formData.append('file', file)
-
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: {
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+        },
         credentials: 'include',
-        body: formData,
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+        }),
       })
 
       const payload = await res.json().catch(async () => {
@@ -35,7 +43,23 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
         return
       }
 
-      onUploaded(payload.url)
+      const bucket = typeof payload.bucket === 'string' ? payload.bucket : ''
+      const path = typeof payload.path === 'string' ? payload.path : ''
+      const token = typeof payload.token === 'string' ? payload.token : ''
+      const url = typeof payload.url === 'string' ? payload.url : ''
+
+      if (!bucket || !path || !token || !url) {
+        alert('Upload failed: invalid upload response')
+        return
+      }
+
+      const { error: uploadError } = await supabase.storage.from(bucket).uploadToSignedUrl(path, token, file)
+      if (uploadError) {
+        alert(uploadError.message || 'Upload failed')
+        return
+      }
+
+      onUploaded(url)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Upload failed'
       alert(message)
@@ -46,7 +70,7 @@ export default function ImageUpload({ onUploaded }: { onUploaded: (url: string) 
 
   return (
     <div>
-      <input type="file" accept="image/*" onChange={handle} />
+      <input type="file" accept={accept} onChange={handle} />
       {loading && <p>Uploading...</p>}
     </div>
   )

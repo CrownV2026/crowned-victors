@@ -8,12 +8,11 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
+  const isConfigured = isSupabaseConfigured()
+  const configurationErrorMessage = 'Admin portal is unavailable because Supabase is not configured correctly.'
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
-      return
-    }
+    if (!isConfigured) return
 
     let subscription: { unsubscribe: () => void } | null = null
 
@@ -21,7 +20,7 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
       supabase.auth.getSession().then(({ data }) => {
         setSession(data.session)
       }).catch(() => {
-        setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+        setErrorMessage(configurationErrorMessage)
       })
 
       const listener = supabase.auth.onAuthStateChange((_event, session) => {
@@ -31,16 +30,16 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
       subscription = listener.data.subscription
     } catch {
       queueMicrotask(() => {
-        setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+        setErrorMessage(configurationErrorMessage)
       })
     }
 
     return () => subscription?.unsubscribe()
-  }, [onAuth])
+  }, [configurationErrorMessage, isConfigured, onAuth])
 
   const signIn = async () => {
-    if (!isSupabaseConfigured()) {
-      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+    if (!isConfigured) {
+      setErrorMessage(configurationErrorMessage)
       return
     }
 
@@ -81,9 +80,9 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
 
   return (
     <div>
-      {errorMessage ? (
+    {errorMessage || !isConfigured ? (
         <p style={{ color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', padding: 10, borderRadius: 8, marginBottom: 10 }}>
-          {errorMessage}
+        {errorMessage || configurationErrorMessage}
         </p>
       ) : null}
       <label>

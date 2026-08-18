@@ -16,6 +16,7 @@ export type BookItem = {
   paymentProviderName?: string
   paymentUrl?: string
   paymentInstructions?: string
+  hasDownloadUrl?: boolean
   deliveryContactLink?: string
   deliveryInstructions?: string
   sortOrder?: number
@@ -125,6 +126,7 @@ export function normalizeBook(raw: Partial<BookItem>): BookItem {
     paymentProviderName: (raw.paymentProviderName || '').trim(),
     paymentUrl: (raw.paymentUrl || raw.buyUrl || '').trim(),
     paymentInstructions: (raw.paymentInstructions || '').trim(),
+    hasDownloadUrl: typeof raw.hasDownloadUrl === 'boolean' ? raw.hasDownloadUrl : Boolean((raw.downloadUrl || '').trim()),
     deliveryContactLink: (raw.deliveryContactLink || raw.orderUrl || '').trim(),
     deliveryInstructions: (raw.deliveryInstructions || '').trim(),
     sortOrder: typeof raw.sortOrder === 'number' ? raw.sortOrder : 0,
