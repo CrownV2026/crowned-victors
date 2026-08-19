@@ -15,7 +15,7 @@ export default function BooksSection({ books, heading, description }: BooksSecti
   const normalizedBooks = useMemo(() => (books || []).map((book) => normalizeBook(book)), [books])
 
   return (
-    <section id="store" className="rounded-[1.75rem] border border-[#D4AF37]/25 bg-[#fffdf8] p-8 shadow-sm">
+    <section id="store" className="rounded-[1.75rem] border border-[#D4AF37]/25 bg-white/40 p-8 shadow-sm backdrop-blur-sm">
       <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#D4AF37]">{heading}</p>
       <p className="mt-3 text-lg leading-8 text-[#0B1F3A]/75">{description}</p>
       <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -30,7 +30,7 @@ export default function BooksSection({ books, heading, description }: BooksSecti
           const bookRef = book.id || String(index)
 
           return (
-            <article key={`${book.title}-${bookRef}`} className="flex h-full flex-col rounded-[1.25rem] border border-[#D4AF37]/20 bg-white p-5 shadow-sm">
+            <article key={`${book.title}-${bookRef}`} className="flex h-full flex-col rounded-[1.25rem] border border-[#D4AF37]/20 bg-white/30 p-5 shadow-sm">
               <div className="relative mb-4 overflow-hidden rounded-xl border border-[#D4AF37]/20 bg-[#f9f2dd]">
                 {book.coverImageUrl ? (
                   <Image src={book.coverImageUrl} alt={`${book.title} cover`} width={800} height={624} unoptimized className="h-52 w-full object-cover" />

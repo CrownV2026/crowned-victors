@@ -17,7 +17,7 @@ function isMissingTableError(error: unknown) {
   return msg.includes('could not find the table') || (msg.includes('relation') && msg.includes('does not exist'))
 }
 
-async function getGalleryContent(): Promise<ContentRow | null> {
+async function getContent(slug: string): Promise<ContentRow | null> {
   const config = getSupabasePublicConfig()
   if (!config) return null
 
@@ -29,7 +29,7 @@ async function getGalleryContent(): Promise<ContentRow | null> {
     const { data, error } = await supabase
       .from(table)
       .select('*')
-      .eq('slug', 'gallery')
+      .eq('slug', slug)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -69,17 +69,24 @@ function toText(value: unknown, fallback: string) {
 }
 
 export default async function GalleryPage() {
-  const gallery = await getGalleryContent()
+  const [gallery, home] = await Promise.all([getContent('gallery'), getContent('home')])
   const heading = toText(gallery?.metadata?.galleryHeading, gallery?.title || 'Gallery')
   const description = toText(gallery?.metadata?.galleryDescription, gallery?.subtitle || 'Moments from worship, fellowship, outreach, and ministry gatherings.')
   const images = parseImageList(gallery?.metadata?.galleryImages || gallery?.metadata?.galleryImagesJson)
+  const backgroundImage = toText(home?.metadata?.homeBackgroundImage, '')
+  const pageStyle = backgroundImage ? {
+    backgroundImage: `linear-gradient(rgba(255,255,255,0.28), rgba(255,255,255,0.28)), url(${backgroundImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundAttachment: 'fixed',
+  } as const : undefined
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(155deg,_#fcfbf5_0%,_#f3edd9_48%,_#fefcf4_100%)] px-4 py-10 text-[#0B1F3A] sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-h-screen bg-[#f7f3e8] bg-cover bg-center px-4 py-10 text-[#0B1F3A] sm:px-6 lg:px-8" style={pageStyle}>
+      <div className="mx-auto max-w-7xl rounded-2xl bg-white/35 p-5 backdrop-blur-sm sm:p-8">
         <div className="mb-8 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{heading}</h1>
-          <Link href="/" className="rounded-full border border-[#D4AF37]/40 bg-white/85 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white">
+          <Link href="/" className="rounded-full border border-[#D4AF37]/40 bg-white/35 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white/50">
             Back to home
           </Link>
         </div>
@@ -89,13 +96,13 @@ export default async function GalleryPage() {
         {images.length > 0 ? (
           <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {images.map((url, index) => (
-              <figure key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/20 bg-white/85 shadow-sm">
+              <figure key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/20 bg-white/25 shadow-sm">
                 <Image src={url} alt={`Gallery image ${index + 1}`} width={1200} height={768} unoptimized className="h-64 w-full object-cover" />
               </figure>
             ))}
           </section>
         ) : (
-          <section className="mt-8 rounded-2xl border border-dashed border-[#D4AF37]/45 bg-white/85 p-6 text-[#0B1F3A]/75">
+          <section className="mt-8 rounded-2xl border border-dashed border-[#D4AF37]/45 bg-white/35 p-6 text-[#0B1F3A]/75">
             No gallery images have been uploaded yet. Add images from the admin editor for the gallery slug.
           </section>
         )}

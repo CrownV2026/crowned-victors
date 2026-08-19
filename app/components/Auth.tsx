@@ -11,7 +11,9 @@ export default function Auth({ onAuth }: { onAuth?: (session: Session | null) =>
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      queueMicrotask(() => {
+        setErrorMessage('Admin portal is unavailable because Supabase is not configured correctly.')
+      })
       return
     }
 

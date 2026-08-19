@@ -55,6 +55,13 @@ type SermonItem = {
   thumbnailUrl: string
 }
 
+type EmpowermentWord = {
+  month: string
+  title: string
+  scripture: string
+  body: string
+}
+
 const emptyBook = (): BookEditorItem => ({
   title: '',
   author: '',
@@ -126,6 +133,27 @@ function normalizeSermonsArray(value: unknown): SermonItem[] {
   })
 }
 
+function normalizeEmpowermentWords(value: unknown): EmpowermentWord[] {
+  if (!Array.isArray(value)) return []
+
+  return value.map((item) => {
+    const record = item as Record<string, unknown>
+    return {
+      month: typeof record.month === 'string' ? record.month : '',
+      title: typeof record.title === 'string' ? record.title : '',
+      scripture: typeof record.scripture === 'string' ? record.scripture : '',
+      body: typeof record.body === 'string' ? record.body : '',
+    }
+  })
+}
+
+const emptyEmpowermentWord = (): EmpowermentWord => ({
+  month: new Date().toISOString().slice(0, 7),
+  title: '',
+  scripture: '',
+  body: '',
+})
+
 function metaToFlat(meta: Record<string, unknown> | null | undefined): Partial<typeof DEFAULTS> {
   if (!meta) return {}
 
@@ -177,7 +205,7 @@ function metaToFlat(meta: Record<string, unknown> | null | undefined): Partial<t
   }
 }
 
-function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: string[], sermons: SermonItem[]) {
+function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: string[], sermons: SermonItem[], empowermentWords: EmpowermentWord[]) {
   function parseJsonSafe(s: string) { try { return JSON.parse(s) } catch { return undefined } }
   return {
     homeBackgroundImage: f.homeBackgroundImage,
@@ -201,6 +229,7 @@ function flatToMeta(f: typeof DEFAULTS, books: BookEditorItem[], galleryImages: 
     sermonsHeading: f.sermonsHeading,
     sermonsDescription: f.sermonsDescription,
     sermons: sermons.length > 0 ? sermons : parseJsonSafe(f.sermonsJson),
+    empowermentWords,
     contactEmail: f.contactEmail,
     contactPhone: f.contactPhone,
     contactLocation: f.contactLocation,
@@ -235,6 +264,7 @@ export default function EditorClient({ slug }: { slug: string }) {
   const [f, setF] = useState({ ...DEFAULTS })
   const [books, setBooks] = useState<BookEditorItem[]>([])
   const [sermons, setSermons] = useState<SermonItem[]>([])
+  const [empowermentWords, setEmpowermentWords] = useState<EmpowermentWord[]>([])
   const [galleryImages, setGalleryImages] = useState<string[]>([])
   const [deletedBookIds, setDeletedBookIds] = useState<string[]>([])
 
@@ -247,6 +277,10 @@ export default function EditorClient({ slug }: { slug: string }) {
 
   const setSermon = (index: number, key: keyof SermonItem, value: string) => {
     setSermons((prev) => prev.map((sermon, i) => i === index ? { ...sermon, [key]: value } : sermon))
+  }
+
+  const setEmpowermentWord = (index: number, key: keyof EmpowermentWord, value: string) => {
+    setEmpowermentWords((prev) => prev.map((word, i) => i === index ? { ...word, [key]: value } : word))
   }
 
   useEffect(() => {
@@ -266,6 +300,7 @@ export default function EditorClient({ slug }: { slug: string }) {
           setF(mapped)
           setBooks(normalizeBooksArray(data.metadata?.books))
           setSermons(normalizeSermonsArray(data.metadata?.sermons))
+          setEmpowermentWords(normalizeEmpowermentWords(data.metadata?.empowermentWords))
           setGalleryImages(normalizeImageArray(data.metadata?.galleryImages || data.metadata?.galleryImagesJson))
         }
       })
@@ -300,7 +335,7 @@ export default function EditorClient({ slug }: { slug: string }) {
     if (!session) return alert('Sign in first')
     const token = session.access_token
 
-    const metadata = flatToMeta(f, books, galleryImages, sermons)
+    const metadata = flatToMeta(f, books, galleryImages, sermons, empowermentWords)
     const method = base.id ? 'PUT' : 'POST'
     const payload = { id: base.id, title: f.title, subtitle: f.subtitle, body: f.body, banner_url: f.banner_url, page: 'home', slug, metadata }
     const res = await fetch('/api/content', { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) })
@@ -402,6 +437,10 @@ export default function EditorClient({ slug }: { slug: string }) {
     setSermons((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const removeEmpowermentWord = (index: number) => {
+    setEmpowermentWords((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const input = (label: string, key: keyof typeof DEFAULTS, placeholder?: string) => (
     <div style={{ marginBottom: 8 }}>
       <label>{label}</label>
@@ -419,6 +458,7 @@ export default function EditorClient({ slug }: { slug: string }) {
   const isGiveOnlineEditor = slug === 'give-online'
   const isGalleryEditor = slug === 'gallery'
   const isSermonsEditor = slug === 'sermons'
+  const isEmpowermentEditor = slug === 'monthly-empowerment'
   const isHomeEditor = slug === 'home'
 
   return (
@@ -515,51 +555,60 @@ export default function EditorClient({ slug }: { slug: string }) {
             Add Sermon
           </button>
         </>
+      ) : isEmpowermentEditor ? (
+        <>
+          <p style={sectionHead}>Weekly Devotional</p>
+          <p style={{ color: '#4b5563', marginBottom: 16 }}>Add the current devotional and keep older entries here for the public archive.</p>
+
+          {empowermentWords.map((word, index) => (
+            <div key={`${word.month}-${index}`} style={{ border: '1px solid #d1d5db', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+              <p style={{ fontWeight: 700, marginBottom: 10 }}>Word {index + 1}</p>
+              <label>Month<input type="month" value={word.month} onChange={(e) => setEmpowermentWord(index, 'month', e.target.value)} style={fieldStyle} /></label>
+              <label>Title<input value={word.title} onChange={(e) => setEmpowermentWord(index, 'title', e.target.value)} placeholder="Theme or title for the devotional" style={fieldStyle} /></label>
+              <label>Scripture<input value={word.scripture} onChange={(e) => setEmpowermentWord(index, 'scripture', e.target.value)} placeholder="Bible verse or reference" style={fieldStyle} /></label>
+              <label>Devotional<textarea value={word.body} onChange={(e) => setEmpowermentWord(index, 'body', e.target.value)} rows={10} placeholder="Write the full weekly devotional" style={{ ...fieldStyle, resize: 'vertical' }} /></label>
+              <button type="button" onClick={() => removeEmpowermentWord(index)} style={{ marginTop: 10, border: '1px solid #dc2626', color: '#dc2626', background: 'transparent', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+                Remove word
+              </button>
+            </div>
+          ))}
+
+          <button type="button" onClick={() => setEmpowermentWords((prev) => [emptyEmpowermentWord(), ...prev])} style={{ border: '1px solid #0b2340', background: '#fff', color: '#0b2340', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
+            Add Devotional
+          </button>
+        </>
       ) : (
         <>
-          <p style={sectionHead}>Hero</p>
-          {input('Title (hero heading)', 'title')}
-          {input('Subtitle (hero subheading)', 'subtitle')}
           {isHomeEditor ? (
             <>
+              <p style={sectionHead}>Home Hero</p>
+              {input('Title (hero heading)', 'title')}
+              {input('Subtitle (hero subheading)', 'subtitle')}
               {input('Home Background Image URL', 'homeBackgroundImage')}
               <div style={{ marginBottom: 8 }}>
                 <label>Home Background Image Upload</label>
                 <ImageUpload onUploaded={(url) => setF(prev => ({ ...prev, homeBackgroundImage: url }))} />
                 {f.homeBackgroundImage && <Image src={f.homeBackgroundImage} alt="home background" width={640} height={360} unoptimized style={{ maxWidth: 320, marginTop: 8, height: 'auto' }} />}
               </div>
+              {input('Callout Card Title', 'heroCalloutTitle', 'e.g. Raising a people who live in victory, not fear.')}
+              {textarea('Callout Card Bullet Points (one per line)', 'heroCalloutItems', 3, 'e.g. Prayer-centered worship and spiritual renewal')}
+              <div style={{ marginBottom: 8 }}>
+                <label>Banner Image</label>
+                <ImageUpload onUploaded={(url) => setF(prev => ({ ...prev, banner_url: url }))} />
+                {f.banner_url && <Image src={f.banner_url} alt="banner" width={640} height={360} unoptimized style={{ maxWidth: 320, marginTop: 8, height: 'auto' }} />}
+              </div>
             </>
           ) : null}
-          {input('Callout Card Title', 'heroCalloutTitle', 'e.g. Raising a people who live in victory, not fear.')}
-          {textarea('Callout Card Bullet Points (one per line)', 'heroCalloutItems', 3, 'e.g. Prayer-centered worship and spiritual renewal')}
-          <div style={{ marginBottom: 8 }}>
-            <label>Banner Image</label>
-            <ImageUpload onUploaded={(url) => setF(prev => ({ ...prev, banner_url: url }))} />
-            {f.banner_url && <Image src={f.banner_url} alt="banner" width={640} height={360} unoptimized style={{ maxWidth: 320, marginTop: 8, height: 'auto' }} />}
-          </div>
 
-          <p style={sectionHead}>Scripture</p>
-          {input('Scripture Verse', 'scripture', '"And I saw, and behold a white horse..." — Revelation 6:2')}
+          {slug === 'scripture-banner' ? <><p style={sectionHead}>Scripture Banner</p>{input('Scripture Verse', 'scripture', '"And I saw, and behold a white horse..." — Revelation 6:2')}</> : null}
+          {slug === 'about' ? <><p style={sectionHead}>About</p>{textarea('About Body', 'body', 4, 'Crowned Victors Ministry exists to help believers...')}{textarea('"Why We Serve" Paragraphs (separate with blank line)', 'aboutWhy', 4)}</> : null}
+          {slug === 'vision' ? <><p style={sectionHead}>Vision</p>{input('Vision Title', 'visionTitle')}{textarea('Vision Text', 'visionText', 3)}</> : null}
+          {slug === 'mission' ? <><p style={sectionHead}>Mission</p>{input('Mission Title', 'missionTitle')}{textarea('Mission Text', 'missionText', 3)}</> : null}
+          {slug === 'statement-of-faith' ? <><p style={sectionHead}>Statement of Faith</p>{textarea('Faith Points (one per line)', 'faithPoints', 5)}</> : null}
+          {slug === 'ministries' ? <><p style={sectionHead}>Ministries</p>{textarea('Ministries (JSON array of {title, description})', 'ministriesJson', 6, '[{"title":"Prayer & Intercession","description":"..."}]')}</> : null}
+          {slug === 'events' ? <><p style={sectionHead}>Events</p>{textarea('Events (JSON array of {title, detail})', 'eventsJson', 6, '[{"title":"Midweek Prayer Gathering","detail":"Wednesdays · 7:00 PM"}]')}</> : null}
 
-          <p style={sectionHead}>About</p>
-          {textarea('About Body', 'body', 4, 'Crowned Victors Ministry exists to help believers...')}
-          {textarea('"Why We Serve" Paragraphs (separate with blank line)', 'aboutWhy', 4)}
-
-          <p style={sectionHead}>Vision & Mission</p>
-          {input('Vision Title', 'visionTitle')}
-          {textarea('Vision Text', 'visionText', 3)}
-          {input('Mission Title', 'missionTitle')}
-          {textarea('Mission Text', 'missionText', 3)}
-
-          <p style={sectionHead}>Statement of Faith</p>
-          {textarea('Faith Points (one per line)', 'faithPoints', 5)}
-
-          <p style={sectionHead}>Ministries</p>
-          {textarea('Ministries (JSON array of {title, description})', 'ministriesJson', 6, '[{"title":"Prayer & Intercession","description":"..."}]')}
-
-          <p style={sectionHead}>Events</p>
-          {textarea('Events (JSON array of {title, detail})', 'eventsJson', 6, '[{"title":"Midweek Prayer Gathering","detail":"Wednesdays · 7:00 PM"}]')}
-
+          {slug === 'books-and-resources' ? <>
           <p style={sectionHead}>Book Store</p>
           {input('Book section heading', 'booksSectionHeading', 'Book Store')}
           {textarea('Book section description', 'booksSectionDescription', 3, 'Buy soft copies online or order hard copies for delivery.')}
@@ -615,11 +664,9 @@ export default function EditorClient({ slug }: { slug: string }) {
           <button type="button" onClick={addBook} style={{ border: '1px solid #0b2340', background: '#fff', color: '#0b2340', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' }}>
             Add Book
           </button>
+          </> : null}
 
-          <p style={sectionHead}>Contact</p>
-          {input('Email', 'contactEmail', 'hello@crownedvictorsministry.org')}
-          {input('Phone', 'contactPhone', '+1 (234) 567-890')}
-          {input('Location', 'contactLocation', 'Serving communities with faith, prayer, and purpose')}
+          {slug === 'contacts' ? <><p style={sectionHead}>Contact</p>{input('Email', 'contactEmail', 'hello@crownedvictorsministry.org')}{input('Phone', 'contactPhone', '+1 (234) 567-890')}{input('Location', 'contactLocation', 'Serving communities with faith, prayer, and purpose')}</> : null}
         </>
       )}
 

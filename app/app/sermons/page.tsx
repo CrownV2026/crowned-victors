@@ -43,7 +43,7 @@ function normalizeSermons(value: unknown): SermonItem[] {
     .filter((item) => Boolean(item.videoUrl))
 }
 
-async function getSermonsContent(): Promise<ContentRow | null> {
+async function getContent(slug: string): Promise<ContentRow | null> {
   const config = getSupabasePublicConfig()
   if (!config) return null
 
@@ -55,7 +55,7 @@ async function getSermonsContent(): Promise<ContentRow | null> {
     const { data, error } = await supabase
       .from(table)
       .select('*')
-      .eq('slug', 'sermons')
+      .eq('slug', slug)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -68,7 +68,7 @@ async function getSermonsContent(): Promise<ContentRow | null> {
 }
 
 export default async function SermonsPage() {
-  const sermonsContent = await getSermonsContent()
+  const [sermonsContent, home] = await Promise.all([getContent('sermons'), getContent('home')])
   const metadata = sermonsContent?.metadata || {}
 
   const heading = typeof metadata.sermonsHeading === 'string' && metadata.sermonsHeading.trim()
@@ -80,13 +80,22 @@ export default async function SermonsPage() {
     : (sermonsContent?.subtitle || 'Watch recent messages and be encouraged in your faith journey.')
 
   const sermons = normalizeSermons(metadata.sermons)
+  const backgroundImage = typeof home?.metadata?.homeBackgroundImage === 'string'
+    ? home.metadata.homeBackgroundImage.trim()
+    : ''
+  const pageStyle = backgroundImage ? {
+    backgroundImage: `linear-gradient(rgba(255,255,255,0.28), rgba(255,255,255,0.28)), url(${backgroundImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundAttachment: 'fixed',
+  } as const : undefined
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(155deg,_#fcfbf5_0%,_#f3edd9_48%,_#fefcf4_100%)] px-4 py-10 text-[#0B1F3A] sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-h-screen bg-[#f7f3e8] bg-cover bg-center px-4 py-10 text-[#0B1F3A] sm:px-6 lg:px-8" style={pageStyle}>
+      <div className="mx-auto max-w-7xl rounded-2xl bg-white/35 p-5 backdrop-blur-sm sm:p-8">
         <div className="mb-8 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{heading}</h1>
-            <Link href="/" className="rounded-full border border-[#D4AF37]/40 bg-white/85 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white">
+            <Link href="/" className="rounded-full border border-[#D4AF37]/40 bg-white/35 px-4 py-2 text-sm font-semibold text-[#0B1F3A] transition hover:border-[#D4AF37] hover:bg-white/50">
             Back to home
           </Link>
         </div>
@@ -96,7 +105,7 @@ export default async function SermonsPage() {
         {sermons.length > 0 ? (
           <section className="mt-8 grid gap-6 lg:grid-cols-2">
             {sermons.map((sermon, index) => (
-              <article key={`${sermon.title || 'sermon'}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/25 bg-white/90 shadow-sm">
+              <article key={`${sermon.title || 'sermon'}-${index}`} className="overflow-hidden rounded-2xl border border-[#D4AF37]/25 bg-white/35 shadow-sm backdrop-blur-sm">
                 <video
                   controls
                   preload="metadata"
@@ -116,7 +125,7 @@ export default async function SermonsPage() {
             ))}
           </section>
         ) : (
-          <section className="mt-8 rounded-2xl border border-dashed border-[#D4AF37]/45 bg-white/85 p-6 text-[#0B1F3A]/75">
+          <section className="mt-8 rounded-2xl border border-dashed border-[#D4AF37]/45 bg-white/35 p-6 text-[#0B1F3A]/75">
             No sermons have been published yet.
           </section>
         )}
